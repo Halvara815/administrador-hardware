@@ -218,6 +218,23 @@ def _paint_refresh(draw: ImageDraw.ImageDraw, size: float, color: str, width: in
     )
 
 
+def _paint_expand(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+    """Cuatro esquinas abiertas hacia fuera: la convención de «ver en grande»."""
+    arm = 0.28
+    corners = ((0.12, 0.12, 1.0, 1.0), (0.88, 0.12, -1.0, 1.0),
+               (0.12, 0.88, 1.0, -1.0), (0.88, 0.88, -1.0, -1.0))
+    for x, y, x_way, y_way in corners:
+        _line(draw, size, ((x, y + y_way * arm), (x, y), (x + x_way * arm, y)), color, width)
+
+
+def _paint_collapse(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+    arm = 0.28
+    corners = ((0.42, 0.42, -1.0, -1.0), (0.58, 0.42, 1.0, -1.0),
+               (0.42, 0.58, -1.0, 1.0), (0.58, 0.58, 1.0, 1.0))
+    for x, y, x_way, y_way in corners:
+        _line(draw, size, ((x, y + y_way * arm), (x, y), (x + x_way * arm, y)), color, width)
+
+
 def _paint_lock(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
     _rect(draw, size, (0.20, 0.44, 0.80, 0.90), color, width, 0.10)
     draw.arc(
@@ -247,6 +264,8 @@ _PAINTERS: dict[str, IconPainter] = {
     "check": _paint_check,
     "info": _paint_info,
     "refresh": _paint_refresh,
+    "expand": _paint_expand,
+    "collapse": _paint_collapse,
     "lock": _paint_lock,
 }
 

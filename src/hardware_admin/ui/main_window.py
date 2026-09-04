@@ -103,6 +103,40 @@ def _format_value(value: Any, indent: str = "") -> str:
     return str(value)
 
 
+def _console_tag(line: str) -> str | None:
+    if line.startswith("> "):
+        return "prompt"
+    if line.startswith("! "):
+        return "error"
+    if line.startswith(" "):
+        return None
+    stripped = line.strip()
+    if not stripped:
+        return None
+    if stripped == stripped.upper() or stripped.endswith(":"):
+        return "key"
+    return None
+
+
+def _configure_console_tags(console: Any) -> None:
+    console.tag_config("prompt", foreground=theme.CONSOLE_PROMPT)
+    console.tag_config("key", foreground=theme.CONSOLE_KEY)
+    console.tag_config("error", foreground=theme.CONSOLE_ERROR)
+
+
+def _fill_console(console: Any, text: str) -> None:
+    """Escribe la evidencia en un cuadro de solo lectura, coloreada por tipo de linea."""
+    console.configure(state="normal")
+    console.delete("1.0", "end")
+    clipped = text[:60_000]
+    console.insert("1.0", clipped)
+    for number, line in enumerate(clipped.splitlines()[:2500], start=1):
+        tag = _console_tag(line)
+        if tag is not None:
+            console.tag_add(tag, f"{number}.0", f"{number}.end")
+    console.configure(state="disabled")
+
+
 def _configure_matrix_columns(frame: Any) -> None:
     for index, (_, weight, minsize) in enumerate(MATRIX_COLUMNS):
         frame.grid_columnconfigure(index, weight=weight, minsize=minsize)
@@ -301,6 +335,92 @@ class MatrixTable(ctk.CTkFrame):
             row.update_result(result)
 
 
+class EvidenceWindow(ctk.CTkToplevel):
+    """Evidencia tecnica a pantalla completa, para leer salidas largas sin recortes."""
+
+    def __init__(self, master: Any, heading: str, body: str, expand_icon: ctk.CTkImage) -> None:
+        super().__init__(master, fg_color=theme.BACKGROUND)
+        self.title("Evidencia técnica")
+        self.geometry("1280x820")
+        self.minsize(640, 400)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.grid(row=0, column=0, sticky="ew", padx=18, pady=(16, 10))
+        bar.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            bar,
+            text="  EVIDENCIA TÉCNICA",
+            image=expand_icon,
+            compound="left",
+            font=ctk.CTkFont(size=15, weight="bold"),
+            text_color=theme.ACCENT_TEXT,
+        ).grid(row=0, column=0, sticky="w")
+        self.heading = ctk.CTkLabel(
+            bar,
+            text=heading,
+            font=ctk.CTkFont(size=12),
+            text_color=theme.MUTED,
+            anchor="w",
+            width=1,
+        )
+        self.heading.grid(row=0, column=1, sticky="ew", padx=16)
+        ctk.CTkButton(
+            bar,
+            text="Copiar",
+            width=104,
+            height=32,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12),
+            fg_color=theme.SURFACE_HOVER,
+            hover_color=theme.ACCENT,
+            command=self.copy_evidence,
+        ).grid(row=0, column=2, sticky="e", padx=(0, 8))
+        ctk.CTkButton(
+            bar,
+            text="Cerrar  (Esc)",
+            width=118,
+            height=32,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            command=self.destroy,
+        ).grid(row=0, column=3, sticky="e")
+
+        self.console = ctk.CTkTextbox(
+            self,
+            fg_color=theme.TERMINAL,
+            border_color=theme.BORDER,
+            border_width=1,
+            corner_radius=10,
+            text_color=theme.CONSOLE_TEXT,
+            font=ctk.CTkFont(family="Consolas", size=13),
+            wrap="none",
+        )
+        self.console.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        _configure_console_tags(self.console)
+        _fill_console(self.console, body)
+
+        self.bind("<Escape>", lambda _event: self.destroy())
+        self.transient(master)
+        # `zoomed` llena la pantalla conservando los botones de ventana; el modo
+        # fullscreen puro los oculta y deja al usuario sin salida visible.
+        self.after(10, lambda: self.state("zoomed"))
+        self.after(20, self.focus)
+
+    def update_content(self, heading: str, body: str) -> None:
+        self.heading.configure(text=heading)
+        _fill_console(self.console, body)
+
+    def copy_evidence(self) -> None:
+        self.clipboard_clear()
+        self.clipboard_append(self.console.get("1.0", "end-1c"))
+
+
 class HardwareAdminApp(ctk.CTk):
     def __init__(self, scan_service: ScanService) -> None:
         ctk.set_appearance_mode("dark")
@@ -315,6 +435,7 @@ class HardwareAdminApp(ctk.CTk):
         self.results_by_kind: dict[ComponentKind, ComponentResult] = {}
         self.cards: dict[ComponentKind, StatusCard] = {}
         self.worker_events: Queue[tuple[str, Any]] = Queue()
+        self.evidence_window: EvidenceWindow | None = None
         self.icons = IconCache()
         self.nav_font = ctk.CTkFont(size=13)
         self.nav_font_selected = ctk.CTkFont(size=13, weight="bold")
@@ -607,17 +728,30 @@ class HardwareAdminApp(ctk.CTk):
 
         header = ctk.CTkFrame(panel, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 8))
-        header.grid_columnconfigure(1, weight=1)
+        header.grid_columnconfigure(2, weight=1)
         ctk.CTkLabel(
             header,
             text="EVIDENCIA TÉCNICA",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=theme.ACCENT_TEXT,
         ).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(
+            header,
+            text="",
+            image=self.icons.get("expand", 15, theme.ACCENT_TEXT),
+            width=34,
+            height=30,
+            corner_radius=8,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            command=self.open_evidence_window,
+        ).grid(row=0, column=1, sticky="w", padx=(10, 0))
         self.console_indicator = ctk.CTkLabel(
             header, text="●", font=ctk.CTkFont(size=14), text_color=theme.MUTED
         )
-        self.console_indicator.grid(row=0, column=1, sticky="e", padx=(0, 12))
+        self.console_indicator.grid(row=0, column=2, sticky="e", padx=(0, 10))
         ctk.CTkButton(
             header,
             text="Copiar",
@@ -630,7 +764,7 @@ class HardwareAdminApp(ctk.CTk):
             fg_color=theme.SURFACE_HOVER,
             hover_color=theme.ACCENT,
             command=self.copy_evidence,
-        ).grid(row=0, column=2, sticky="e")
+        ).grid(row=0, column=3, sticky="e")
 
         self.console = ctk.CTkTextbox(
             panel,
@@ -643,9 +777,7 @@ class HardwareAdminApp(ctk.CTk):
             wrap="none",
         )
         self.console.grid(row=1, column=0, sticky="nsew", padx=12, pady=(0, 8))
-        self.console.tag_config("prompt", foreground=theme.CONSOLE_PROMPT)
-        self.console.tag_config("key", foreground=theme.CONSOLE_KEY)
-        self.console.tag_config("error", foreground=theme.CONSOLE_ERROR)
+        _configure_console_tags(self.console)
         self._set_console(
             "ADMINISTRADOR DE HARDWARE\n"
             "La evidencia de las consultas aparecerá aquí.\n\n"
@@ -861,6 +993,7 @@ class HardwareAdminApp(ctk.CTk):
                 f"> {self.selected_component.value}\n"
                 f"Sin evidencia. Use «Analizar {name}» o ANALIZAR EQUIPO."
             )
+            self._sync_evidence_window()
             return
 
         self.console_context.configure(text=f"Componente: {result.name}")
@@ -888,32 +1021,32 @@ class HardwareAdminApp(ctk.CTk):
                 ]
             )
         self._set_console("\n".join(lines))
-
-    @staticmethod
-    def _console_tag(line: str) -> str | None:
-        if line.startswith("> "):
-            return "prompt"
-        if line.startswith("! "):
-            return "error"
-        if line.startswith(" "):
-            return None
-        stripped = line.strip()
-        if not stripped:
-            return None
-        if stripped == stripped.upper() or stripped.endswith(":"):
-            return "key"
-        return None
+        self._sync_evidence_window()
 
     def _set_console(self, text: str) -> None:
-        self.console.configure(state="normal")
-        self.console.delete("1.0", "end")
-        clipped = text[:60_000]
-        self.console.insert("1.0", clipped)
-        for number, line in enumerate(clipped.splitlines()[:2500], start=1):
-            tag = self._console_tag(line)
-            if tag is not None:
-                self.console.tag_add(tag, f"{number}.0", f"{number}.end")
-        self.console.configure(state="disabled")
+        _fill_console(self.console, text)
+
+    def open_evidence_window(self) -> None:
+        """Abre la evidencia del componente seleccionado a pantalla completa."""
+        heading = self.console_context.cget("text")
+        body = self.console.get("1.0", "end-1c")
+        window = self.evidence_window
+        if window is not None and window.winfo_exists():
+            window.update_content(heading, body)
+            window.deiconify()
+            window.lift()
+            window.focus()
+            return
+        self.evidence_window = EvidenceWindow(
+            self, heading, body, self.icons.get("expand", 17, theme.ACCENT_TEXT)
+        )
+
+    def _sync_evidence_window(self) -> None:
+        window = self.evidence_window
+        if window is not None and window.winfo_exists():
+            window.update_content(
+                self.console_context.cget("text"), self.console.get("1.0", "end-1c")
+            )
 
     def copy_evidence(self) -> None:
         text = self.console.get("1.0", "end-1c")

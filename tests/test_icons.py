@@ -17,6 +17,11 @@ class IconTests(TestCase):
         self.assertEqual(set(SECTION_NAMES), set(ComponentKind))
         self.assertEqual(set(ICON_NAMES), set(ComponentKind))
 
+    def test_the_icons_used_outside_the_menu_are_drawable(self) -> None:
+        extras = {"check", "collapse", "copy", "expand", "info", "lock", "refresh", "save"}
+
+        self.assertLessEqual(extras, set(icons.available_icons()))
+
     def test_render_returns_a_transparent_square_of_the_requested_size(self) -> None:
         image = icons.render("cpu", 24, "#4A9EFF")
 
