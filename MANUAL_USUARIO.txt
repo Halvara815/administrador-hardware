@@ -1,0 +1,51 @@
+ADMINISTRADOR DE HARDWARE 0.1.0
+================================
+
+REQUISITOS
+----------
+- Windows 10 u 11 de 64 bits.
+- PowerShell y los servicios de administración de Windows disponibles.
+- No requiere instalar Python para usar la versión incluida en dist.
+
+INICIO
+------
+1. Abra la carpeta AdministradorDeHardware.
+2. Ejecute AdministradorDeHardware.exe.
+3. Presione ANALIZAR EQUIPO.
+4. Espere a que finalicen las once comprobaciones.
+
+USO DE LA PANTALLA
+------------------
+- Las tarjetas superiores resumen CPU, RAM, discos y red.
+- La matriz central muestra evidencia, estado y posible problema.
+- Las opciones 1 a 11 seleccionan el componente que desea revisar.
+- EVIDENCIA TÉCNICA muestra la salida de la consulta seleccionada.
+- El botón Copiar lleva esa evidencia al portapapeles.
+- La opción 12 genera un reporte HTML en la ubicación elegida.
+
+ESTADOS
+-------
+- Normal: el indicador medido está dentro del umbral esperado.
+- Advertencia: existe uso elevado o una condición que conviene revisar.
+- Problema: Windows informó un error o se superó un umbral crítico.
+- Error de consulta: no fue posible obtener el dato. No significa que el
+  dispositivo esté sano ni necesariamente que esté dañado.
+
+PRIVACIDAD Y SEGURIDAD
+----------------------
+- La aplicación no utiliza base de datos ni envía información a Internet.
+- Los resultados viven en memoria hasta cerrar la aplicación.
+- El reporte se crea sólo cuando usted lo solicita.
+- El reporte puede contener nombre del equipo, IP, MAC e identificadores de
+  dispositivos. Revíselo antes de compartirlo.
+- La aplicación es de diagnóstico: no modifica ni instala controladores.
+- Algunas consultas pueden mostrar menos datos con una cuenta sin permisos.
+
+SOPORTE Y LOGS
+--------------
+Los errores internos mínimos se escriben en:
+%LOCALAPPDATA%\AdministradorHardware\logs\app.log
+
+Esta herramienta ayuda a recopilar evidencia. Un estado normal no sustituye
+una inspección física o técnica cuando el problema persiste.
+
