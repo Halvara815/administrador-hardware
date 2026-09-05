@@ -1363,6 +1363,27 @@ class HardwareAdminApp(ctk.CTk):
             lines.append(f"{key}:")
             lines.append(_format_value(value, "  "))
             lines.append("")
+        # Recomendaciones del componente seleccionado, antes de la evidencia cruda.
+        applicable = [
+            item
+            for item in (self.report.recommendations if self.report else ())
+            if item.component is result.component
+        ]
+        for item in applicable:
+            lines.extend(["RECOMENDACIÓN", "--------------", item.title, ""])
+            lines.append(f"Causa: {item.cause}")
+            lines.append("")
+            lines.append("Pasos:")
+            lines.extend(f"  {number}. {step}" for number, step in enumerate(item.steps, 1))
+            lines.extend(["", f"Fundamento: {item.rationale}"])
+            lines.append(f"Comprobación posterior: {item.verification}")
+            lines.append(
+                "! Modifica el sistema: la aplicación no lo ejecuta, lo aplica usted."
+                if item.modifies_system
+                else "Sólo consulta: no altera el equipo."
+            )
+            lines.append("")
+
         lines.extend(["EVIDENCIA CRUDA", "---------------"])
         for evidence in result.evidence:
             marker = ">" if evidence.succeeded else "!"

@@ -251,7 +251,7 @@ avanzar; no crear carpetas vacías masivamente.
 | 3 | pnp, drivers, storage, gpu — **COMPLETADA** | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma — gates pytest/ruff/mypy en verde | Conservar core.py hasta paridad |
 | 4A | monitoring_service, ui/charts, panel de E/S — **COMPLETADA** | Buffer 300 y parada explícita; series de disco y red en vivo; gates pytest/ruff/mypy en verde | Retirar los dos módulos nuevos y el panel |
 | 4B | Gráficos de CPU, RAM, discos y red — **COMPLETADA** | Medidor y barras por apartado; series numéricas con prefijo `_`; gates pytest/ruff/mypy en verde | Ocultar el panel y conservar la tabla |
-| 4C | diagnostics/recommendations | Causa, pasos ordenados, fundamento y comprobación posterior | Mostrar sólo el problema posible |
+| 4C | diagnostics/recommendations — **COMPLETADA** | Causa, pasos, fundamento, comprobación y si modifica el sistema; en reporte y ficha; gates en verde | Mostrar sólo el problema posible |
 | 4D | Menú de 15 opciones y Salir | Conectividad, Monitorización, Recomendaciones y Exportar; cierre ordenado | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
 | 6 | Documentación de producto | Guía de uso, límites, referencias, soporte y pruebas reales | Mantener documentación versionada |
@@ -279,7 +279,19 @@ Series actuales: `_uso` y `_nucleos` (CPU), `_uso` y `_memoria` (RAM),
 modificó ni se renombró, de modo que matriz, ficha, reporte y las pruebas de las
 fases 1-3 siguen leyendo exactamente lo mismo.
 
-Las rebanadas 4C y 4D siguen **sin implementar**.
+La **4C** añade recomendaciones estructuradas. Cada procedimiento lleva causa,
+pasos ordenados, fundamento, comprobación posterior y el campo `modifies_system`:
+
+> **La aplicación propone procedimientos; nunca los ejecuta.** Los que alteran el
+> equipo —`ipconfig /release`, `/renew`, `/flushdns`, reinstalar controladores—
+> van marcados para que el usuario sepa qué va a cambiar antes de aplicarlos.
+
+El generador es una función pura sobre los resultados ya clasificados: no consulta
+Windows ni reinterpreta porcentajes, de modo que una recomendación no puede
+contradecir la matriz. Un equipo sin anomalías y sin síntoma no genera ninguna.
+Diseño en [docs/superpowers](docs/superpowers/specs/2026-09-05-recomendaciones-design.md).
+
+La rebanada 4D (menú de 15 opciones y Salir) sigue **sin implementar**.
 
 Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
 

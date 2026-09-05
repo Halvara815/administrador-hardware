@@ -67,6 +67,25 @@ class ComponentResult:
 
 
 @dataclass(frozen=True, slots=True)
+class Recommendation:
+    """Procedimiento correctivo propuesto, nunca ejecutado por la aplicación.
+
+    `modifies_system` distingue comprobar de alterar: separa «revisar el
+    Administrador de dispositivos» de «ejecutar ipconfig /release». La
+    aplicación describe el procedimiento y lo deja en manos del usuario;
+    no ejecuta release/renew, limpieza de DNS ni cambios de controladores.
+    """
+
+    component: ComponentKind
+    title: str
+    cause: str
+    steps: tuple[str, ...]
+    rationale: str
+    verification: str
+    modifies_system: bool = False
+
+
+@dataclass(frozen=True, slots=True)
 class DiagnosticReport:
     started_at: datetime
     completed_at: datetime
@@ -80,6 +99,9 @@ class DiagnosticReport:
     #: Dispositivo que el usuario espera detectar; ausencia no se confunde
     #: con salud física ni se usa para condenar un bus completo.
     expected_device: str | None = None
+    #: Procedimientos propuestos, ordenados por gravedad. Vacío cuando no hay
+    #: anomalías ni síntoma: no se inventan recomendaciones sin motivo.
+    recommendations: tuple[Recommendation, ...] = field(default_factory=tuple)
 
     @property
     def has_problems(self) -> bool:

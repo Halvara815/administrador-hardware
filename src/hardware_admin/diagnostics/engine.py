@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from hardware_admin.diagnostics.recommendations import build_recommendations
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -158,4 +159,5 @@ class RuleBasedDiagnosticEngine:
             limitations=limitations,
             symptom=symptom,
             expected_device=expected_device,
+            recommendations=build_recommendations(results, symptom, expected_device),
         )
