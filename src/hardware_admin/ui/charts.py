@@ -49,6 +49,27 @@ def _x_for(index: int, count: int, width: int) -> float:
     return index * (width / (count - 1))
 
 
+#: Barrido del medidor en grados: arco abierto por abajo, de 225 a -45.
+GAUGE_START = 225.0
+GAUGE_SWEEP = 270.0
+
+
+def gauge_extent(percent: float) -> float:
+    """Grados que ocupa el arco de un medidor para un porcentaje dado.
+
+    Negativo porque tkinter mide el barrido en sentido antihorario. Un valor
+    fuera de 0-100 se recorta: un porcentaje imposible no puede desbordar el
+    dibujo.
+    """
+    ratio = min(max(percent, 0.0), 100.0) / 100.0
+    return -GAUGE_SWEEP * ratio
+
+
+def bar_widths(ratios: Sequence[float], width: int) -> list[float]:
+    """Ancho en pixeles de cada barra, recortado al carril disponible."""
+    return [min(max(ratio, 0.0), 1.0) * width for ratio in ratios]
+
+
 def format_rate(bps: float) -> str:
     """Formatea una tasa en unidades legibles por segundo."""
     amount = max(bps, 0.0)
@@ -137,3 +158,127 @@ class TimeSeriesChart(ctk.CTkFrame):
             for x, y in points:
                 flat.extend((x, y))
             self.canvas.create_line(*flat, fill=spec.color, width=2)
+
+
+class _ChartFrame(ctk.CTkFrame):
+    """Marco comun de los graficos: titulo a la izquierda, dato a la derecha."""
+
+    def __init__(self, master: Any, title: str) -> None:
+        super().__init__(
+            master,
+            fg_color=theme.SURFACE,
+            corner_radius=10,
+            border_width=1,
+            border_color=theme.BORDER,
+        )
+        self.grid_columnconfigure(0, weight=1)
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 4))
+        header.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(
+            header,
+            text=title,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            text_color=theme.TEXT,
+        ).grid(row=0, column=0, sticky="w")
+        self.value_label = ctk.CTkLabel(
+            header, text="", font=ctk.CTkFont(size=11), text_color=theme.MUTED
+        )
+        self.value_label.grid(row=0, column=1, sticky="e")
+
+
+class GaugeChart(_ChartFrame):
+    """Medidor circular de un porcentaje unico."""
+
+    def __init__(self, master: Any, title: str, size: int = 150) -> None:
+        super().__init__(master, title)
+        self.size = size
+        self.canvas = tk.Canvas(
+            self, width=size, height=size, background=theme.TERMINAL,
+            highlightthickness=0, bd=0,
+        )
+        self.canvas.grid(row=1, column=0, padx=12, pady=(0, 12))
+
+    def update_value(self, percent: float, label: str, color: str) -> None:
+        """Redibuja el medidor. Solo desde el hilo principal."""
+        self.value_label.configure(text=label)
+        self.canvas.delete("all")
+        margin, width = 16, 14
+        box = (margin, margin, self.size - margin, self.size - margin)
+        self.canvas.create_arc(
+            *box, start=GAUGE_START, extent=-GAUGE_SWEEP, style="arc",
+            outline=theme.BORDER, width=width,
+        )
+        extent = gauge_extent(percent)
+        if extent != 0.0:
+            self.canvas.create_arc(
+                *box, start=GAUGE_START, extent=extent, style="arc",
+                outline=color, width=width,
+            )
+        self.canvas.create_text(
+            self.size / 2, self.size / 2, text=f"{percent:.0f}%",
+            fill=theme.TEXT, font=("Segoe UI", 20, "bold"),
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class Bar:
+    """Una barra: etiqueta, proporcion ocupada (0-1), valor y color."""
+
+    label: str
+    ratio: float
+    value: str
+    color: str
+
+
+class BarListChart(_ChartFrame):
+    """Lista de barras horizontales: nucleos, volumenes o adaptadores."""
+
+    ROW_HEIGHT = 26
+
+    def __init__(self, master: Any, title: str) -> None:
+        super().__init__(master, title)
+        self.canvas = tk.Canvas(
+            self, height=self.ROW_HEIGHT, background=theme.TERMINAL,
+            highlightthickness=0, bd=0,
+        )
+        self.canvas.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+
+    def update_bars(self, bars: Sequence[Bar], value_label: str = "") -> None:
+        """Redibuja la lista. Una lista vacia deja el grafico en blanco."""
+        self.value_label.configure(text=value_label)
+        self.canvas.delete("all")
+        if not bars:
+            self.canvas.configure(height=self.ROW_HEIGHT)
+            self.canvas.create_text(
+                10, self.ROW_HEIGHT / 2, anchor="w", text="Sin datos disponibles",
+                fill=theme.MUTED, font=("Segoe UI", 10),
+            )
+            return
+
+        self.canvas.configure(height=self.ROW_HEIGHT * len(bars))
+        total_width = max(self.canvas.winfo_width(), 1)
+        label_width, value_width = 120, 110
+        track = max(total_width - label_width - value_width, 1)
+        widths = bar_widths([bar.ratio for bar in bars], track)
+
+        for index, (bar, filled) in enumerate(zip(bars, widths)):
+            top = index * self.ROW_HEIGHT + 6
+            bottom = top + self.ROW_HEIGHT - 14
+            self.canvas.create_text(
+                0, (top + bottom) / 2, anchor="w", text=bar.label,
+                fill=theme.MUTED, font=("Segoe UI", 10),
+            )
+            self.canvas.create_rectangle(
+                label_width, top, label_width + track, bottom,
+                fill=theme.SURFACE_ALT, outline="",
+            )
+            if filled > 0:
+                self.canvas.create_rectangle(
+                    label_width, top, label_width + filled, bottom,
+                    fill=bar.color, outline="",
+                )
+            self.canvas.create_text(
+                total_width, (top + bottom) / 2, anchor="e", text=bar.value,
+                fill=theme.TEXT, font=("Segoe UI", 10),
+            )
