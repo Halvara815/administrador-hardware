@@ -147,10 +147,25 @@ class RuleBasedDiagnosticEngine:
                 "condenar ningún bus: su ausencia requiere confirmación por ID."
             )
 
-        limitations = tuple(
+        unsupported = [
+            result
+            for result in results
+            if result.status is HealthStatus.NOT_SUPPORTED or not result.is_supported
+        ]
+        if unsupported and not alerts and not failures:
+            conclusion_parts.append(
+                "Algunas comprobaciones no son soportadas por este hardware o versión de Windows."
+            )
+
+        limitations_list = [
             f"{result.name}: {result.possible_problem or 'consulta no disponible'}"
             for result in failures
+        ]
+        limitations_list.extend(
+            f"{result.name}: función no soportada en este entorno"
+            for result in unsupported
         )
+        limitations = tuple(limitations_list)
         return DiagnosticReport(
             started_at=started,
             completed_at=now,

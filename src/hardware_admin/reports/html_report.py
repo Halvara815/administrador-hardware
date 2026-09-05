@@ -16,6 +16,8 @@ _STATUS_LABELS = {
     HealthStatus.WARNING: "Advertencia",
     HealthStatus.CRITICAL: "Problema",
     HealthStatus.ERROR: "Error de consulta",
+    HealthStatus.NOT_SUPPORTED: "No soportado",
+    HealthStatus.CANCELLED: "Cancelado",
 }
 
 

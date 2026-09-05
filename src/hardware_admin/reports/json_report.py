@@ -86,8 +86,20 @@ def build_payload(
                 "componente": item.component.value,
                 "nombre": item.name,
                 "estado": item.status.value,
+                "confianza": item.confidence.value,
+                "soportado": item.is_supported,
                 "resumen": item.summary,
                 "posible_problema": item.possible_problem,
+                "mediciones": [
+                    {
+                        "nombre": m.name,
+                        "valor": m.value,
+                        "unidad": m.unit,
+                        "rango_esperado": list(m.expected_range) if m.expected_range else None,
+                        "duracion_segundos": m.duration_seconds,
+                    }
+                    for m in item.measurements
+                ],
                 "datos": _public_facts(item.facts),
                 "evidencia": [
                     {
@@ -127,6 +139,13 @@ def build_payload(
             "componentes_consultados": len(report.results),
             "consultas_fallidas": len(failures),
             "componentes_con_anomalia": len(alerts),
+            "componentes_no_soportados": len(
+                [
+                    r
+                    for r in report.results
+                    if r.status is HealthStatus.NOT_SUPPORTED or not r.is_supported
+                ]
+            ),
             "nota": (
                 "Una consulta fallida deja el componente sin evaluar; "
                 "no equivale a ausencia de problemas."

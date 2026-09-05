@@ -64,4 +64,6 @@ STATUS_COLORS: dict[HealthStatus, str] = {
     HealthStatus.WARNING: YELLOW,
     HealthStatus.CRITICAL: RED,
     HealthStatus.ERROR: RED,
+    HealthStatus.NOT_SUPPORTED: MUTED,
+    HealthStatus.CANCELLED: MUTED,
 }

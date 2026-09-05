@@ -14,6 +14,14 @@ class HealthStatus(StrEnum):
     WARNING = "warning"
     CRITICAL = "critical"
     ERROR = "error"
+    NOT_SUPPORTED = "not_supported"
+    CANCELLED = "cancelled"
+
+
+class ConfidenceLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
 
 class ComponentKind(StrEnum):
@@ -28,6 +36,17 @@ class ComponentKind(StrEnum):
     PROBLEM_DEVICE = "problem_device"
     MONITOR_GPU = "monitor_gpu"
     IO = "io"
+
+
+@dataclass(frozen=True, slots=True)
+class Measurement:
+    """Medición cuantitativa técnica con unidad física y rangos esperados."""
+
+    name: str
+    value: float | int
+    unit: str
+    expected_range: tuple[float, float] | None = None
+    duration_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,6 +83,9 @@ class ComponentResult:
     status: HealthStatus = HealthStatus.UNKNOWN
     possible_problem: str | None = None
     evidence: tuple[EvidenceRecord, ...] = field(default_factory=tuple)
+    confidence: ConfidenceLevel = ConfidenceLevel.LOW
+    measurements: tuple[Measurement, ...] = field(default_factory=tuple)
+    is_supported: bool = True
 
 
 @dataclass(frozen=True, slots=True)

@@ -90,7 +90,7 @@ servicios remotos ni dependencias antes de demostrar que son necesarias.
 
 ## Fase 0: congelar y proteger la versión actual
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (tag `v0.1.0-baseline` creado y verificado).
 
 Objetivo: convertir `v0.1.0` en una referencia recuperable antes de agregar funciones.
 
@@ -110,7 +110,7 @@ Estimación: 1–2 horas.
 
 ## Fase 1: contratos de diagnóstico profesional
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (contratos profesionales, ConfidenceLevel, Measurement, NOT_SUPPORTED y CANCELLED implementados).
 
 Objetivo: preparar contratos compatibles para mediciones más profundas.
 
@@ -137,7 +137,7 @@ Estimación: 1–2 horas.
 
 ## Fase 2: almacenamiento, batería y firmware
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (2026-09-05: Almacenamiento profundo con SMART/Reliability, degradación de permisos, batería y energía con detección desktop sin batería, firmware BIOS/UEFI/TPM/Secure Boot, desglose de módulos físicos RAM y powercfg /batteryreport bajo demanda con confirmación explícita. 206 pruebas pasadas y 29 subtests pasados en pytest, ruff check limpio, mypy sin errores en 35 archivos, build y smoke-test de PyInstaller validados).
 
 Objetivo: pasar de inventario básico a salud física consultable.
 

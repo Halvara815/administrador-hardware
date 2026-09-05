@@ -18,6 +18,8 @@ _ESTADOS = {
     "warning": "Advertencia",
     "critical": "Problema",
     "error": "Error de consulta",
+    "not_supported": "No soportado",
+    "cancelled": "Cancelado",
 }
 
 

@@ -24,6 +24,11 @@ class PowerShellQuery(StrEnum):
     USB_STORAGE = "usb_storage"
     NETWORK_ADAPTERS = "network_adapters"
     NETWORK_CONFIGURATION = "network_configuration"
+    STORAGE_RELIABILITY = "storage_reliability"
+    BATTERY_INFO = "battery_info"
+    FIRMWARE_INFO = "firmware_info"
+    PHYSICAL_MEMORY_MODULES = "physical_memory_modules"
+    PERIPHERALS_EXTENDED = "peripherals_extended"
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +143,75 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
                 DHCPEnabled=$_.DHCPEnabled;
             }
         })
+    """,
+    PowerShellQuery.STORAGE_RELIABILITY: """
+        $data = @(Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+            $disk = $_
+            $rel = $null
+            $err = $null
+            try {
+                $rel = Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction Stop
+            } catch {
+                $err = $_.Exception.Message
+            }
+            [PSCustomObject]@{
+                DeviceId = $disk.DeviceId;
+                FriendlyName = $disk.FriendlyName;
+                MediaType = $disk.MediaType;
+                BusType = $disk.BusType;
+                OperationalStatus = $disk.OperationalStatus;
+                HealthStatus = $disk.HealthStatus;
+                Temperature = if ($rel) { $rel.Temperature } else { $null };
+                Wear = if ($rel) { $rel.Wear } else { $null };
+                ReadErrorsTotal = if ($rel) { $rel.ReadErrorsTotal } else { $null };
+                WriteErrorsTotal = if ($rel) { $rel.WriteErrorsTotal } else { $null };
+                PowerOnHours = if ($rel) { $rel.PowerOnHours } else { $null };
+                ReliabilityError = $err
+            }
+        })
+    """,
+    PowerShellQuery.BATTERY_INFO: """
+        $batt = @(Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object `
+            Name,DeviceID,EstimatedChargeRemaining,BatteryStatus,DesignCapacity,FullChargeCapacity,EstimatedRunTime,CycleCount)
+        $plan = Get-CimInstance -Namespace root\\cimv2\\power -ClassName Win32_PowerPlan -Filter "IsActive = True" -ErrorAction SilentlyContinue
+        $data = @([PSCustomObject]@{
+            Baterias = $batt;
+            TieneBateria = ($batt.Count -gt 0);
+            PlanEnergia = if ($plan) { $plan.ElementName } else { "Equilibrado" }
+        })
+    """,
+    PowerShellQuery.FIRMWARE_INFO: """
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+        $board = Get-CimInstance Win32_BaseBoard -ErrorAction SilentlyContinue
+        $tpm = Get-Tpm -ErrorAction SilentlyContinue
+        $sb = $null
+        try {
+            $sb = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
+        } catch {
+            $sb = $null
+        }
+        $data = @([PSCustomObject]@{
+            BiosVendor = if ($bios) { $bios.Manufacturer } else { "No disponible" };
+            BiosVersion = if ($bios) { $bios.SMBIOSBIOSVersion } else { "No disponible" };
+            BiosDate = if ($bios) { $bios.ReleaseDate } else { "No disponible" };
+            BoardManufacturer = if ($board) { $board.Manufacturer } else { "No disponible" };
+            BoardProduct = if ($board) { $board.Product } else { "No disponible" };
+            BoardVersion = if ($board) { $board.Version } else { "No disponible" };
+            TpmPresent = if ($tpm) { [bool]$tpm.TpmPresent } else { $false };
+            TpmReady = if ($tpm) { [bool]$tpm.TpmReady } else { $false };
+            TpmEnabled = if ($tpm) { [bool]$tpm.TpmEnabled } else { $false };
+            SecureBoot = if ($sb -ne $null) { [bool]$sb } else { "No disponible" }
+        })
+    """,
+    PowerShellQuery.PHYSICAL_MEMORY_MODULES: """
+        $data = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Select-Object `
+            BankLabel,DeviceLocator,Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber,FormFactor,MemoryType,SMBIOSMemoryType)
+    """,
+    PowerShellQuery.PERIPHERALS_EXTENDED: """
+        $classes = @('Bluetooth', 'Media', 'Camera', 'Image', 'Keyboard', 'Mouse')
+        $data = @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+            Where-Object { $classes -contains $_.Class } |
+            Select-Object -First 100 Status,Class,FriendlyName,InstanceId,Problem)
     """,
 }
 

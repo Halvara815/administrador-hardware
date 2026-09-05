@@ -12,13 +12,11 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno: `pytest -q` = **179 pasadas, 8 omitidas**;
-  `ruff check .` y `mypy` = **PASS**. Las 8 omitidas requieren sesión gráfica
-  para renderizar Tk. Pytest emitió una advertencia porque `.pytest_cache` no
-  puede actualizar `cache/nodeids` (`WinError 183`); no invalida las pruebas,
-  pero se debe corregir antes de la siguiente distribución.
+- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **206 pasadas, 29 subtests pasados**;
+  `ruff check .` = **All checks passed!**; `mypy src` = **Success (35 files)**;
+  build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
-  configurados. No se ejecutó en esta revisión el build, el pipeline remoto, el
+  configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
 
 ## Estado contra el alcance implementado
@@ -28,6 +26,11 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 | Interfaz, matriz, consola y 15 apartados | COMPLETADA | `ui/main_window.py`, contratos UI y pruebas |
 | CPU/RAM de uso instantáneo, reglas y gráficos | COMPLETADA | `core.py`, `rules.py`, gráficos y tests |
 | Discos: espacio, medio/bus, volúmenes y USB sin volumen | COMPLETADA | `storage.py`, consultas Get-Disk/Get-PhysicalDisk/Get-Volume |
+| Salud profunda de almacenamiento (SMART/Reliability) | COMPLETADA | `storage.py`, `powershell.py`: contadores de fiabilidad, degradación por permisos, sin falsos positivos |
+| Batería, energía, plan y reporte bajo demanda | COMPLETADA | `core.py`, `commands.py`, `main_window.py`: powercfg con askokcancel y asksaveasfilename, desktop sin batería |
+| Firmware, Placa base, TPM y Secure Boot | COMPLETADA | `core.py`, `powershell.py`: Win32_BaseBoard, Win32_BIOS, Get-Tpm, Confirm-SecureBootUEFI |
+| Módulos físicos de memoria RAM (SMBIOS) | COMPLETADA | `core.py`, `powershell.py`: desglose por ranura, DMTF SMBIOS (DDR4/DDR5/etc.), velocidad configurada |
+| Periféricos clave (PnP extendido) | COMPLETADA | `core.py`, `powershell.py`: Bluetooth, cámara, multimedia, entrada; fallos aislados sin condenar el subsistema |
 | Red básica y escalonada | COMPLETADA | adaptador, IP, gateway, IP externa y DNS; timeout/presupuesto |
 | USB, PCI/PCIe y dispositivos con problema | COMPLETADA | IDs/códigos PnP, casos C2/C3 y tests |
 | GPU/monitor y drivers de inventario | COMPLETADA | WMI, versión de driver como inventario; no asesor de actualización |
@@ -44,14 +47,12 @@ El estado COMPLETADA describe la capacidad delimitada en esta tabla; no signific
 | Requisito o mejora | Estado y destino |
 |---|---|
 | Temperaturas CPU/GPU/disco, ventiladores, voltajes, frecuencias y throttling | Pendiente: hoja comercial Fase 3 |
-| SMART/NVMe, vida SSD, sectores/errores, temperatura y prueba corta de disco | Pendiente: Fase 2 y Fase 6 |
-| Módulos RAM, ranuras, fabricante, velocidad/configuración y máximo ampliable | Pendiente: E2; inventario básico actual no equivale a esto |
+| Prueba corta de disco / autoprueba SMART activa | Pendiente: Fase 6 |
+| Asesor de compatibilidad de ampliación RAM con placa | Pendiente: Asesor E2 |
 | Diagnóstico de memoria Windows y prueba de RAM segura | Pendiente: Fase 6, con consentimiento/reinicio explícito |
 | Latencia/pérdida, Wi-Fi y descartes de red | Pendiente: Fase 4; gateway/DNS/Internet ya completados |
-| Batería, cargador, plan energético y `batteryreport` | Pendiente: Fase 2 |
 | Eventos WHEA/disco/drivers/reinicios/BSOD | Pendiente: Fase 4 |
 | Drivers faltantes/deshabilitados/antiguos y actualización segura OEM | Parcial: hoy se muestran versión/fecha/firma/IDs y PnP reporta códigos; asesor P15 pendiente |
-| Placa, BIOS/UEFI, TPM, Secure Boot, periféricos y pantalla detallada | Pendiente: Fase 2 ampliada en esta revisión |
 | Motor multimuestreo, confianza y correlación de señales | Pendiente: Fase 5; monitorización E/S no satisface este motor |
 | PDF y modo técnico/básico | PDF pendiente Fase 7 comercial; HTML/JSON/TXT completados |
 | MSI/MSIX, firma, actualización, licencia/activación y matriz comercial | Pendiente: Fases 8–9 comerciales |

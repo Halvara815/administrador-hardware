@@ -25,6 +25,7 @@ from hardware_admin.domain.models import (
     DiagnosticReport,
     HealthStatus,
 )
+from hardware_admin.infrastructure.commands import generate_battery_report
 from hardware_admin.reports.html_report import export_html
 from hardware_admin.reports.json_report import export_json
 from hardware_admin.reports.txt_report import export_txt
@@ -51,6 +52,8 @@ STATUS_LABELS = {
     HealthStatus.WARNING: "Advertencia",
     HealthStatus.CRITICAL: "Problema",
     HealthStatus.ERROR: "Error de consulta",
+    HealthStatus.NOT_SUPPORTED: "No soportado",
+    HealthStatus.CANCELLED: "Cancelado",
 }
 
 STATUS_COLORS = theme.STATUS_COLORS
@@ -814,6 +817,24 @@ class HardwareAdminApp(ctk.CTk):
             title_row, text="", text_color=theme.MUTED, font=ctk.CTkFont(size=12)
         )
         self.progress_label.grid(row=0, column=1, sticky="e", padx=(12, 14))
+        self.battery_report_button = ctk.CTkButton(
+            title_row,
+            text="Reporte de batería",
+            image=self.icons.get("report", 16, theme.ACCENT_TEXT),
+            compound="left",
+            command=self.request_battery_report,
+            height=34,
+            width=180,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.battery_report_button.grid(row=0, column=2, sticky="e", padx=(0, 10))
+
         self.section_button = ctk.CTkButton(
             title_row,
             text="Analizar sistema",
@@ -830,7 +851,7 @@ class HardwareAdminApp(ctk.CTk):
             border_color=theme.BORDER,
             text_color=theme.ACCENT_TEXT,
         )
-        self.section_button.grid(row=0, column=2, sticky="e")
+        self.section_button.grid(row=0, column=3, sticky="e")
 
         cards_frame = ctk.CTkFrame(content, fg_color="transparent")
         cards_frame.grid(row=1, column=0, sticky="ew", pady=(0, 18))
@@ -1434,6 +1455,11 @@ class HardwareAdminApp(ctk.CTk):
         self.workspace.grid()
         self.matrix.select(component)
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
+        if component is ComponentKind.SYSTEM:
+            self.battery_report_button.grid()
+        else:
+            self.battery_report_button.grid_remove()
+
         # Un unico hueco en la fila 3: el panel en vivo en E/S, y el de
         # graficos del apartado en CPU, RAM, discos y red.
         if component is ComponentKind.IO:
@@ -1757,6 +1783,58 @@ class HardwareAdminApp(ctk.CTk):
             return
         self.progress_label.configure(text=f"Reporte guardado: {path.name}")
         messagebox.showinfo("Reporte generado", f"Reporte guardado en:\n{path}", parent=self)
+
+    def request_battery_report(self) -> None:
+        """Solicita y genera un reporte HTML detallado de batería vía powercfg."""
+        proceed = messagebox.askokcancel(
+            "Generar reporte de batería",
+            "Esta acción ejecutará la herramienta nativa de Windows (powercfg /batteryreport)\n"
+            "para generar un reporte HTML detallado del historial y salud de la batería.\n\n"
+            "¿Desea continuar?",
+            parent=self,
+        )
+        if not proceed:
+            return
+
+        default_name = f"battery-report-{datetime.now(UTC):%Y%m%d-%H%M}.html"
+        destination = filedialog.asksaveasfilename(
+            parent=self,
+            title="Guardar reporte de batería",
+            defaultextension=".html",
+            initialfile=default_name,
+            filetypes=(
+                ("Reporte HTML", "*.html"),
+                ("Todos los archivos", "*.*"),
+            ),
+        )
+        if not destination:
+            return
+
+        target_path = Path(destination)
+        if target_path.exists():
+            overwrite = messagebox.askyesno(
+                "Confirmar reemplazo",
+                f"El archivo {target_path.name} ya existe.\n¿Desea reemplazarlo?",
+                parent=self,
+            )
+            if not overwrite:
+                return
+
+        result = generate_battery_report(target_path)
+        if result.exit_code == 0:
+            self.progress_label.configure(text=f"Reporte de batería: {target_path.name}")
+            messagebox.showinfo(
+                "Reporte de batería generado",
+                f"El reporte de batería se guardó con éxito en:\n{target_path}",
+                parent=self,
+            )
+        else:
+            err_msg = result.error.strip() or f"Código de salida: {result.exit_code}"
+            messagebox.showerror(
+                "Error al generar reporte",
+                f"No se pudo generar el reporte de batería.\n\nDetalle: {err_msg}",
+                parent=self,
+            )
 
     def export_debug_state(self) -> str:
         """Representación estable usada por el smoke test, sin datos sensibles completos."""

@@ -78,6 +78,23 @@ def _memory(result: ComponentResult) -> Recommendation:
 
 
 def _disk(result: ComponentResult) -> Recommendation:
+    if "salud física" in (result.possible_problem or "").lower():
+        return Recommendation(
+            component=ComponentKind.DISK,
+            title="Revisar estado físico del disco y realizar copia de seguridad",
+            cause=result.possible_problem or "Alerta de estado operativo o salud física en el disco.",
+            steps=(
+                "Realizar una copia de seguridad inmediata de los datos importantes.",
+                "Consultar los eventos de disco en el Visor de eventos de Windows (ID 7, 11 o 51).",
+                "Verificar la garantía y ejecutar la herramienta de diagnóstico oficial del fabricante.",
+                "Evitar operaciones de escritura intensivas hasta asegurar el respaldo.",
+            ),
+            rationale=(
+                "El controlador de almacenamiento o Windows reporta que la unidad física no se "
+                "encuentra en estado completamente saludable, lo que puede anticipar fallos graves."
+            ),
+            verification="Comprobar el estado físico del disco con la utilidad del fabricante.",
+        )
     return Recommendation(
         component=ComponentKind.DISK,
         title="Liberar espacio en disco",

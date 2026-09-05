@@ -6,6 +6,7 @@ import ipaddress
 import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 #: Patrón seguro para nombres de host o dominios sin caracteres de inyección.
 _SAFE_HOST_REGEX = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$")
@@ -144,4 +145,29 @@ class SafeCommandRunner:
     def arp_a(self, timeout: float = 5.0) -> NativeCommandResult:
         """Ejecuta arp.exe -a para consultar la tabla de resolución local conocida."""
         return self._execute(["arp.exe", "-a"], timeout=timeout)
+
+    def battery_report(self, target_path: str, timeout: float = 15.0) -> NativeCommandResult:
+        """Ejecuta powercfg.exe /batteryreport /output hacia una ruta validada."""
+        if not target_path or any(ch in _DISALLOWED_CHARS for ch in target_path):
+            return NativeCommandResult(
+                command=("powercfg.exe", "/batteryreport", "/output", target_path),
+                output="",
+                exit_code=-1,
+                error=f"Ruta de reporte de batería inválida o no segura: {target_path!r}",
+            )
+        return self._execute(
+            ["powercfg.exe", "/batteryreport", "/output", str(target_path).strip()],
+            timeout=timeout,
+        )
+
+
+def generate_battery_report(
+    target_path: Path,
+    runner: SafeCommandRunner | None = None,
+) -> NativeCommandResult:
+    """Genera un reporte de batería mediante powercfg sólo por acción explícita."""
+    cmd_runner = runner or SafeCommandRunner()
+    resolved = str(target_path.resolve())
+    return cmd_runner.battery_report(resolved)
+
 
