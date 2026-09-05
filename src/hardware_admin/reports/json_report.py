@@ -19,6 +19,7 @@ from typing import Any
 
 from hardware_admin import __version__
 from hardware_admin.domain.models import DiagnosticReport, HealthStatus
+from hardware_admin.reports._logging import log_export
 
 #: Versión del esquema de exportación. Subir sólo ante cambios incompatibles.
 SCHEMA_VERSION = "1.0"
@@ -147,4 +148,5 @@ def export_json(
         json.dumps(payload, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    log_export(path, "json", include_identity)
     return path

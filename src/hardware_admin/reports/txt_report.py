@@ -9,6 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from hardware_admin.domain.models import DiagnosticReport
+from hardware_admin.reports._logging import log_export
 from hardware_admin.reports.json_report import build_payload
 
 _ESTADOS = {
@@ -115,4 +116,5 @@ def export_txt(
     """Guarda el diagnóstico como texto plano en UTF-8."""
     path = Path(destination)
     path.write_text(render_text(report, include_identity), encoding="utf-8")
+    log_export(path, "txt", include_identity)
     return path

@@ -132,3 +132,39 @@ class JsonExportTests(TestCase):
 
         self.assertIn("Uso", datos)
         self.assertNotIn("_uso", datos)
+
+
+class ExportLoggingTests(TestCase):
+    """Observabilidad: «resultado y ruta final de exportación, sin el contenido»."""
+
+    def test_json_export_logs_result_and_path(self) -> None:
+        with TemporaryDirectory() as directory:
+            destino = f"{directory}/reporte.json"
+            with self.assertLogs("hardware_admin.reports", "INFO") as registro:
+                export_json(sample_report(), destino)
+
+        linea = " ".join(registro.output)
+        self.assertIn("report_exported", linea)
+        self.assertIn("format=json", linea)
+        self.assertIn("reporte.json", linea)
+
+    def test_the_log_records_whether_identity_was_included(self) -> None:
+        with (
+            TemporaryDirectory() as directory,
+            self.assertLogs("hardware_admin.reports", "INFO") as registro,
+        ):
+            export_json(sample_report(), f"{directory}/r.json", include_identity=False)
+
+        self.assertIn("identity=omitted", " ".join(registro.output))
+
+    def test_the_log_never_carries_the_report_content(self) -> None:
+        """Se registra la ruta y el resultado, nunca lo que contiene el reporte."""
+        with (
+            TemporaryDirectory() as directory,
+            self.assertLogs("hardware_admin.reports", "INFO") as registro,
+        ):
+            export_json(sample_report(), f"{directory}/r.json")
+
+        linea = " ".join(registro.output)
+        self.assertNotIn("Carga elevada de CPU", linea)
+        self.assertNotIn("se reinicia al jugar", linea)

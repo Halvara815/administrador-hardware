@@ -147,6 +147,14 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
 MAX_OUTPUT_CHARS = 1_000_000
 
 
+class UnknownQuery(KeyError):
+    """Se pidió ejecutar algo que no pertenece al catálogo cerrado.
+
+    El rechazo ocurre antes de invocar el intérprete: ninguna cadena externa
+    llega nunca a componerse como comando.
+    """
+
+
 class MalformedQueryOutput(ValueError):
     """La consulta terminó bien pero su salida no es un inventario legible.
 
@@ -163,7 +171,14 @@ class SafePowerShellRunner:
         self.timeout_seconds = timeout_seconds
 
     def run(self, query: PowerShellQuery) -> CommandResult:
-        script = _QUERY_SCRIPTS[query]
+        # Comprobación explícita antes de tocar el intérprete: el catálogo es la
+        # única fuente de comandos, y un fallo de búsqueda no debe parecer un
+        # accidente del diccionario.
+        script = _QUERY_SCRIPTS.get(query) if isinstance(query, PowerShellQuery) else None
+        if script is None:
+            raise UnknownQuery(
+                f"La consulta {query!r} no pertenece al catálogo cerrado y no se ejecuta."
+            )
         complete_script = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();"
             "$ErrorActionPreference='Stop';"
