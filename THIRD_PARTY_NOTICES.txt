@@ -1,0 +1,59 @@
+AVISOS DE TERCEROS
+==================
+
+Administrador de Hardware 0.1.0 incorpora los siguientes componentes de
+terceros. Cada uno conserva su propia licencia y sus titulares de derechos.
+Las versiones indicadas son las verificadas en el entorno de compilación;
+compruébelas de nuevo si regenera el ejecutable con dependencias distintas.
+
+--------------------------------------------------------------------------
+customtkinter 6.0.0
+Licencia: Creative Commons Zero v1.0 Universal (CC0-1.0)
+Propósito: componentes de interfaz gráfica sobre Tkinter.
+https://github.com/TomSchimansky/CustomTkinter
+
+--------------------------------------------------------------------------
+Pillow 12.3.0
+Licencia: MIT-CMU
+Propósito: composición de los iconos vectoriales de la interfaz.
+https://python-pillow.org/
+
+--------------------------------------------------------------------------
+psutil 7.2.2
+Licencia: BSD 3-Clause
+Propósito: lectura de CPU, memoria, discos, red y contadores de E/S.
+https://github.com/giampaolo/psutil
+
+--------------------------------------------------------------------------
+darkdetect 0.8.0
+Licencia: BSD 3-Clause
+Propósito: dependencia de customtkinter para detectar el tema del sistema.
+https://github.com/albertosottile/darkdetect
+
+--------------------------------------------------------------------------
+packaging 26.3
+Licencia: Apache-2.0 OR BSD-2-Clause
+Propósito: dependencia transitiva de las herramientas de empaquetado.
+https://github.com/pypa/packaging
+
+--------------------------------------------------------------------------
+Python y su biblioteca estándar
+Licencia: PSF License Agreement
+Propósito: intérprete y módulos estándar (tkinter, json, subprocess y otros)
+incluidos en el ejecutable.
+https://docs.python.org/3/license.html
+
+--------------------------------------------------------------------------
+PyInstaller
+Licencia: GPL 2.0 con excepción para los ejecutables generados.
+Propósito: herramienta de compilación. No se distribuye dentro del programa;
+la excepción de la licencia permite distribuir el ejecutable resultante bajo
+los términos que elija el autor de la aplicación.
+https://pyinstaller.org/
+
+--------------------------------------------------------------------------
+COMPONENTES DEL SISTEMA OPERATIVO
+
+La aplicación invoca herramientas incluidas en Windows (powershell.exe,
+cmd.exe, ipconfig, ping, nslookup y arp). No se redistribuyen: se utilizan las
+que provee el sistema donde se ejecuta el programa.
