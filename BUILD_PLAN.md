@@ -229,10 +229,30 @@ avanzar; no crear carpetas vacías masivamente.
 | 1 | domain, rules, engine, UI — **COMPLETADA** | Umbrales decimales/bordes; ERROR distinto de CRÍTICO; síntoma y C5 — gates pytest/ruff/mypy en verde | Campos nuevos opcionales; revertir slice |
 | 2 | commands, network, connectivity, UI | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada | Omitir pruebas externas y conservar datos locales |
 | 3 | pnp, drivers, storage, gpu | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma | Conservar core.py hasta paridad |
-| 4 | monitoring, recommendations, UI | C4 y casos individuales; buffer/parada; 15 opciones+Salir | Cancelar tareas y volver a última UI estable |
+| 4 | monitoring, charts por apartados, recommendations, UI | Gráficos visuales integrados en apartados (CPU, RAM, Discos, Red, E/S); buffer/parada; 15 opciones+Salir | Cancelar tareas y volver a última UI estable |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
 | 6 | docs/research, Informe.md | >=5 fichas, marco conceptual, APA 7, >=5 pruebas reales | Mantener borradores y evidencia versionados |
 | 7 | packaging, entrega, README | EXE sin Python instalado, ZIP exacto y demostración completa | Última entrega verificada; no publicar fallos |
+
+### Especificación técnica del apartado de gráficos (Fase 4)
+
+Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
+
+1. **Aislamiento por capas (sin daños en la lógica existente)**:
+   - La capa de presentación (`hardware_admin.ui`) es la **única** responsable de renderizar gráficos.
+   - No se alteran los contratos de `domain`, los recolectores de `collectors` ni las reglas de diagnóstico de `diagnostics`.
+   - Los gráficos consumen exclusivamente los datos estructurados y normalizados ya provistos en `ComponentResult.facts` o en las series de `monitoring_service`.
+
+2. **Apartados con gráficos asignados**:
+   - **CPU**: Medidor/gauge de uso total (%) y barras de distribución por núcleo lógico según datos disponibles.
+   - **Memoria (RAM)**: Barra de asignación de capacidad (usada vs. libre vs. total) y estado de memoria virtual.
+   - **Discos / Almacenamiento**: Gráfico de barras apiladas de espacio por unidad/volumen (usado vs. disponible) y salud reportada.
+   - **Red**: Gráficos de velocidad de enlace por adaptador y estado de actividad de interfaces.
+   - **Monitorización (E/S)**: Gráfico de series de tiempo (gráfico de líneas dinámico sobre buffer de 300 muestras) mostrando tasas de lectura/escritura en disco y tráfico de red en vivo con botón de parada.
+
+3. **Restricción de dependencias y rendimiento**:
+   - No se introducen dependencias pesadas adicionales (como `matplotlib` o `numpy`) para evitar sobrecargar el empaquetado de PyInstaller o ralentizar el arranque.
+   - Se implementarán mediante widgets modulares nativos sobre `tkinter.Canvas` y componentes de `customtkinter`, sincronizados con la paleta de colores de `theme.py`.
 
 Cada fase registrará fallos y duración de pruebas. Sin migraciones de DB;
 schema_version permitirá leer exportaciones antiguas o avisar incompatibilidad.
