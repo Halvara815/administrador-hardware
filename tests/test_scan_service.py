@@ -1,3 +1,4 @@
+import time
 from unittest import TestCase
 
 from hardware_admin.collectors.pnp import PnpDeviceCollector
@@ -121,3 +122,120 @@ class MalformedOutputScanTests(TestCase):
 
         self.assertFalse(report.has_problems)
         self.assertEqual(len(report.limitations), 1)
+
+
+class _SlowCollector:
+    """Recolector que tarda mas de lo que permite el presupuesto."""
+
+    def __init__(self, component: ComponentKind, seconds: float) -> None:
+        self.component = component
+        self.seconds = seconds
+
+    def collect(self) -> ComponentResult:
+        time.sleep(self.seconds)
+        return ComponentResult(
+            component=self.component,
+            name=self.component.value,
+            facts={},
+            summary="tardío",
+            status=HealthStatus.NORMAL,
+        )
+
+
+class _FastCollector:
+    def __init__(self, component: ComponentKind) -> None:
+        self.component = component
+
+    def collect(self) -> ComponentResult:
+        return ComponentResult(
+            component=self.component,
+            name=self.component.value,
+            facts={},
+            summary="rápido",
+            status=HealthStatus.NORMAL,
+        )
+
+
+class ScanBudgetTests(TestCase):
+    """Objetivo operativo: límite total de escaneo, con resultados parciales."""
+
+    def _service(self, *collectors: object) -> ScanService:
+        return ScanService(
+            collectors=tuple(collectors),  # type: ignore[arg-type]
+            diagnostic_engine=RuleBasedDiagnosticEngine(),
+        )
+
+    def test_a_scan_within_budget_keeps_every_component(self) -> None:
+        service = self._service(
+            _FastCollector(ComponentKind.CPU), _FastCollector(ComponentKind.MEMORY)
+        )
+
+        report = service.scan(budget_seconds=5.0)
+
+        self.assertEqual(len(report.results), 2)
+        self.assertTrue(all(r.status is HealthStatus.NORMAL for r in report.results))
+
+    def test_exceeding_the_budget_returns_the_partial_results(self) -> None:
+        service = self._service(
+            _FastCollector(ComponentKind.CPU), _SlowCollector(ComponentKind.MEMORY, 1.2)
+        )
+
+        report = service.scan(budget_seconds=0.4)
+
+        self.assertEqual(len(report.results), 2)
+        por_tipo = {r.component: r for r in report.results}
+        self.assertIs(por_tipo[ComponentKind.CPU].status, HealthStatus.NORMAL)
+        self.assertIs(por_tipo[ComponentKind.MEMORY].status, HealthStatus.ERROR)
+
+    def test_a_component_left_out_is_not_reported_as_healthy(self) -> None:
+        """Una prueba omitida no equivale a hardware sano: debe verse."""
+        service = self._service(_SlowCollector(ComponentKind.DISK, 1.2))
+
+        report = service.scan(budget_seconds=0.3)
+        resultado = report.results[0]
+
+        self.assertIs(resultado.status, HealthStatus.ERROR)
+        self.assertIn("límite", (resultado.possible_problem or "").lower())
+        self.assertFalse(report.has_problems)
+        self.assertEqual(len(report.limitations), 1)
+
+    def test_the_skipped_component_carries_evidence_of_why(self) -> None:
+        service = self._service(_SlowCollector(ComponentKind.DISK, 1.2))
+
+        resultado = service.scan(budget_seconds=0.3).results[0]
+
+        self.assertTrue(resultado.evidence)
+        self.assertFalse(resultado.evidence[0].succeeded)
+
+
+class SessionIdTests(TestCase):
+    """Objetivo operativo: registrar ID de sesión, consulta, duración y resultado."""
+
+    def test_each_scan_logs_a_session_identifier(self) -> None:
+        service = ScanService(
+            collectors=(_FastCollector(ComponentKind.CPU),),  # type: ignore[arg-type]
+            diagnostic_engine=RuleBasedDiagnosticEngine(),
+        )
+
+        with self.assertLogs("hardware_admin.services.scan_service", "INFO") as registro:
+            service.scan()
+
+        linea = " ".join(registro.output)
+        self.assertIn("session=", linea)
+        self.assertIn("duration_ms=", linea)
+
+    def test_two_scans_use_different_session_identifiers(self) -> None:
+        service = ScanService(
+            collectors=(_FastCollector(ComponentKind.CPU),),  # type: ignore[arg-type]
+            diagnostic_engine=RuleBasedDiagnosticEngine(),
+        )
+
+        sesiones = []
+        for _ in range(2):
+            with self.assertLogs("hardware_admin.services.scan_service", "INFO") as registro:
+                service.scan()
+            sesiones.append(
+                next(p for p in " ".join(registro.output).split() if p.startswith("session="))
+            )
+
+        self.assertNotEqual(sesiones[0], sesiones[1])
