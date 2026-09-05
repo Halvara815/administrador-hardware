@@ -12,14 +12,14 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **199 passed, 8 skipped, 29 subtests passed**;
-  `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 35 source files**;
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **227 passed, 29 subtests passed**;
+  `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `f358360fa8c0ab593d75e328980766317d5ccea4776ffc289bf02937c38eb1da`
-  - Fecha de compilación (EXE): `2026-09-05T17:29:07-06:00`
+  - SHA-256 (EXE): `1302f42ca0be7e7eceb28ba242f4e833c359a588443ec0fd00de344230433796`
+  - Fecha de compilación (EXE): `2026-09-05T17:53:58-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `97cb8f9dcd1567ab85183bc184c8dedf81785058346c7157343a544db5e31e7d`
+  - SHA-256 (ZIP): `0d00eb3d9339882592d860cbff3cc9d102f3cdd8cb8d2b45ef03f716e00021c2`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -36,6 +36,7 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 | Firmware, Placa base, TPM y Secure Boot | COMPLETADA | `core.py`, `powershell.py`: Win32_BaseBoard, Win32_BIOS, Get-Tpm, Confirm-SecureBootUEFI |
 | Módulos físicos de memoria RAM (SMBIOS) | COMPLETADA | `core.py`, `powershell.py`: desglose por ranura, DMTF SMBIOS (DDR4/DDR5/etc.), velocidad configurada |
 | Periféricos clave (PnP extendido) | COMPLETADA | `core.py`, `powershell.py`: Bluetooth, cámara, multimedia, entrada; fallos aislados sin condenar el subsistema |
+| Telemetría térmica, sensores y throttling (Fase F3) | NEEDS_USER_VERIFICATION | `thermal.py`, `core.py`, `gpu.py`: arquitectura desacoplada `ThermalSensorProvider`, WMI ACPI, SMART storage y NVIDIA SMI con banderas oficiales de throttling térmico |
 | Red básica y escalonada | COMPLETADA | adaptador, IP, gateway, IP externa y DNS; timeout/presupuesto |
 | USB, PCI/PCIe y dispositivos con problema | COMPLETADA | IDs/códigos PnP, casos C2/C3 y tests |
 | GPU/monitor y drivers de inventario | COMPLETADA | WMI, versión de driver como inventario; no asesor de actualización |
@@ -51,12 +52,12 @@ El estado COMPLETADA describe la capacidad delimitada en esta tabla; no signific
 
 | Requisito o mejora | Estado y destino |
 |---|---|
-| Temperaturas CPU/GPU/disco, ventiladores, voltajes, frecuencias y throttling | Pendiente: hoja comercial Fase 3 (NO INICIADA) |
+| Validación física de sensores en hardware Intel/AMD/NVIDIA/AMD GPU heterogéneo | Pendiente: validación humana en laboratorio / NEEDS_USER_VERIFICATION |
 | Prueba corta de disco / autoprueba SMART activa | Pendiente: Fase 6 |
 | Asesor de compatibilidad de ampliación RAM con placa | Pendiente: Asesor E2 |
 | Diagnóstico de memoria Windows y prueba de RAM segura | Pendiente: Fase 6, con consentimiento/reinicio explícito |
-| Latencia/pérdida, Wi-Fi y descartes de red | Pendiente: Fase 4; gateway/DNS/Internet ya completados |
-| Eventos WHEA/disco/drivers/reinicios/BSOD | Pendiente: Fase 4 |
+| Latencia/pérdida, Wi-Fi y descartes de red | Pendiente: Fase 4 (NO INICIADA) |
+| Eventos WHEA/disco/drivers/reinicios/BSOD | Pendiente: Fase 4 (NO INICIADA) |
 | Drivers faltantes/deshabilitados/antiguos y actualización segura OEM | Parcial: hoy se muestran versión/fecha/firma/IDs y PnP reporta códigos; asesor P15 pendiente |
 | Motor multimuestreo, confianza y correlación de señales | Pendiente: Fase 5; monitorización E/S no satisface este motor |
 | PDF y modo técnico/básico | PDF pendiente Fase 7 comercial; HTML/JSON/TXT completados |
@@ -84,10 +85,8 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Orden recomendado al retomar
 
-1. El siguiente trabajo canónico debe ser la **Fase 3 comercial (sensores y comportamiento térmico)**,
-   la cual permanece **ESTRICTAMENTE NO INICIADA**.
-2. Posteriormente avanzar secuencialmente a Fase 4 (red avanzada y eventos del sistema) y
-   Fase 5 (motor multimuestreo y correlación de señales).
+1. Con la telemetría térmica implementada en F3 (marcada `NEEDS_USER_VERIFICATION` a la espera de pruebas físicas en laboratorio con hardware heterogéneo), el siguiente trabajo canónico es la **Fase 4 comercial (red y eventos críticos de Windows)**, la cual permanece **ESTRICTAMENTE NO INICIADA**.
+2. Posteriormente avanzar secuencialmente a Fase 5 (motor multimuestreo y correlación de señales) y Fase 6 (pruebas de estrés controladas y diagnósticos de memoria seguros).
 3. E1–E8 e I1–I5 después de tener mediciones y fuentes verificables; no sustituir
    reglas por IA ni integrar una clave del vendedor dentro del EXE.
 

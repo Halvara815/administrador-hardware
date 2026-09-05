@@ -16,6 +16,12 @@ from hardware_admin.collectors.gpu import GpuCollector
 from hardware_admin.collectors.pnp import PnpDeviceCollector
 from hardware_admin.collectors.storage import StorageCollector
 from hardware_admin.diagnostics.rules import CPU_RULE, MEMORY_RULE
+from hardware_admin.diagnostics.thermal import (
+    CompositeThermalProvider,
+    NvidiaGpuThermalProvider,
+    ThermalSensorProvider,
+    WmiThermalZoneProvider,
+)
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -67,8 +73,13 @@ def _ps_failure(name: str, component: ComponentKind, query: str, error: str) -> 
 class SystemCollector:
     component = ComponentKind.SYSTEM
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
+    def __init__(
+        self,
+        runner: SafePowerShellRunner,
+        thermal_provider: Any | None = None,
+    ) -> None:
         self.runner = runner
+        self.thermal_provider = thermal_provider
 
     def collect(self) -> ComponentResult:
         uname = platform.uname()
@@ -272,6 +283,27 @@ class SystemCollector:
             facts["Bluetooth"] = "No disponible o no consultable"
             facts["Cámara web"] = "No disponible o no consultable"
 
+        # 5. Telemetría térmica general del equipo (Fase F3)
+        if self.thermal_provider is not None:
+            try:
+                thermal_readings = self.thermal_provider.read_temperatures()
+                if thermal_readings:
+                    facts["Sensores térmicos del equipo"] = [
+                        {
+                            "Origen": r.source_name,
+                            "Hardware": r.target_hardware,
+                            "Temperatura": f"{r.temperature_celsius} °C" if r.temperature_celsius is not None else "No disponible",
+                            "Throttling": "Activo" if r.is_throttling is True else ("Inactivo" if r.is_throttling is False else "No determinado"),
+                            "Estado": r.status.value,
+                            "Detalle": r.detail,
+                        }
+                        for r in thermal_readings
+                    ]
+                    for r in thermal_readings:
+                        measurements.extend(r.measurements)
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+                facts["Sensores térmicos del equipo"] = f"Error al consultar telemetría: {exc}"
+
         output = "\n".join(f"{key}: {value}" for key, value in facts.items())
         evidence = [_evidence("Python/platform", "platform.uname()", output)]
         if result.output or result.error:
@@ -325,8 +357,13 @@ class SystemCollector:
 class CpuCollector:
     component = ComponentKind.CPU
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
+    def __init__(
+        self,
+        runner: SafePowerShellRunner,
+        thermal_provider: Any | None = None,
+    ) -> None:
         self.runner = runner
+        self.thermal_provider = thermal_provider
 
     def collect(self) -> ComponentResult:
         # Cebar el contador por nucleo antes de la medicion global: la lectura
@@ -341,7 +378,7 @@ class CpuCollector:
         model = platform.processor() or "Procesador no identificado"
         if rows and rows[0].get("Name"):
             model = str(rows[0]["Name"]).strip()
-        facts = {
+        facts: dict[str, Any] = {
             "Modelo": model,
             "Núcleos físicos": psutil.cpu_count(logical=False) or "No disponible",
             "Procesadores lógicos": psutil.cpu_count(logical=True) or "No disponible",
@@ -355,6 +392,41 @@ class CpuCollector:
         }
         status = CPU_RULE.classify(usage)
         problem = "Carga elevada del procesador" if status is not HealthStatus.NORMAL else None
+
+        measurements: list[Measurement] = [
+            Measurement("Uso de CPU", float(usage), "%", (0.0, 85.0), duration_seconds=1.0)
+        ]
+        if frequency and frequency.current:
+            measurements.append(
+                Measurement("Frecuencia actual", round(frequency.current / 1000.0, 2), "GHz")
+            )
+
+        # Telemetría térmica de CPU / Zonas térmicas ACPI
+        if self.thermal_provider is not None:
+            try:
+                thermal_readings = self.thermal_provider.read_temperatures()
+                cpu_thermal = [r for r in thermal_readings if r.target_hardware == "CPU"]
+                if cpu_thermal:
+                    facts["Telemetría térmica CPU"] = [
+                        {
+                            "Sensor": r.source_name,
+                            "Temperatura": f"{r.temperature_celsius} °C" if r.temperature_celsius is not None else "No disponible",
+                            "Estado": r.status.value,
+                            "Detalle": r.detail,
+                        }
+                        for r in cpu_thermal
+                    ]
+                    for r in cpu_thermal:
+                        measurements.extend(r.measurements)
+                        if r.status is HealthStatus.CRITICAL and status is not HealthStatus.CRITICAL:
+                            status = HealthStatus.CRITICAL
+                            problem = (problem + "; " if problem else "") + f"Alerta térmica crítica en CPU ({r.detail})"
+                        elif r.status is HealthStatus.WARNING and status is HealthStatus.NORMAL:
+                            status = HealthStatus.WARNING
+                            problem = (problem + "; " if problem else "") + f"Temperatura elevada en CPU ({r.detail})"
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+                facts["Telemetría térmica CPU"] = f"Error al consultar telemetría: {exc}"
+
         output = f"psutil.cpu_percent(interval=1)\n{usage:.1f}\n\n" + (
             result.output or result.error
         )
@@ -366,6 +438,7 @@ class CpuCollector:
             status=status,
             possible_problem=problem,
             evidence=(_evidence("psutil + PowerShell", "CPU", output, result.exit_code == 0),),
+            measurements=tuple(measurements),
         )
 
 
@@ -750,11 +823,22 @@ class IoCollector:
         )
 
 
-def build_default_collectors() -> tuple[HardwareCollector, ...]:
+def build_default_collectors(
+    thermal_provider: ThermalSensorProvider | None = None,
+) -> tuple[HardwareCollector, ...]:
     runner = SafePowerShellRunner()
+    provider = thermal_provider
+    if provider is None:
+        provider = CompositeThermalProvider(
+            (
+                WmiThermalZoneProvider(runner),
+                NvidiaGpuThermalProvider(),
+            )
+        )
+
     return (
-        SystemCollector(runner),
-        CpuCollector(runner),
+        SystemCollector(runner, thermal_provider=provider),
+        CpuCollector(runner, thermal_provider=provider),
         MemoryCollector(runner),
         DiskCollector(runner),
         NetworkCollector(runner),
@@ -767,6 +851,6 @@ def build_default_collectors() -> tuple[HardwareCollector, ...]:
             "Dispositivos con problemas",
             PowerShellQuery.PROBLEM_DEVICES,
         ),
-        MonitorGpuCollector(runner),
+        MonitorGpuCollector(runner, thermal_provider=provider),
         IoCollector(),
     )

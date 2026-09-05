@@ -34,8 +34,13 @@ class GpuCollector:
 
     component = ComponentKind.MONITOR_GPU
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
+    def __init__(
+        self,
+        runner: SafePowerShellRunner,
+        thermal_provider: Any | None = None,
+    ) -> None:
         self.runner = runner
+        self.thermal_provider = thermal_provider
 
     def collect(self) -> ComponentResult:
         result = self.runner.run(PowerShellQuery.VIDEO_CONTROLLERS)
@@ -132,6 +137,40 @@ class GpuCollector:
             ),
         }
 
+        # Telemetría térmica de GPU si hay proveedor disponible
+        gpu_measurements: list[Any] = []
+        if self.thermal_provider is not None:
+            try:
+                thermal_readings = self.thermal_provider.read_temperatures()
+                gpu_thermal = [r for r in thermal_readings if r.target_hardware == "GPU"]
+                if gpu_thermal:
+                    facts["Telemetría térmica GPU"] = [
+                        {
+                            "Dispositivo": r.source_name,
+                            "Temperatura": f"{r.temperature_celsius} °C" if r.temperature_celsius is not None else "No disponible",
+                            "Throttling térmico": "Activo" if r.is_throttling is True else ("Inactivo" if r.is_throttling is False else "No determinado"),
+                            "Ventilador": f"{r.fan_rpm}%" if r.fan_rpm is not None else "No disponible",
+                            "Potencia": f"{r.power_watts} W" if r.power_watts is not None else "No disponible",
+                            "Frecuencia": f"{r.clock_mhz} MHz" if r.clock_mhz is not None else "No disponible",
+                            "Estado": r.status.value,
+                            "Detalle": r.detail,
+                        }
+                        for r in gpu_thermal
+                    ]
+                    for r in gpu_thermal:
+                        gpu_measurements.extend(r.measurements)
+                        if r.status is HealthStatus.CRITICAL and status is not HealthStatus.CRITICAL:
+                            status = HealthStatus.CRITICAL
+                            problems_desc.append(f"Alerta térmica crítica en GPU ({r.detail})")
+                        elif r.status is HealthStatus.WARNING and status is HealthStatus.NORMAL:
+                            status = HealthStatus.WARNING
+                            problems_desc.append(f"Temperatura elevada en GPU ({r.detail})")
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+                facts["Telemetría térmica GPU"] = f"Error al consultar telemetría: {exc}"
+
+        if problems_desc:
+            problem = "; ".join(problems_desc)
+
         summary = f"{len(gpu_rows)} GPU · {len(monitor_rows)} monitor(es)"
         if status is HealthStatus.NORMAL:
             summary += " · Estado OK"
@@ -154,4 +193,5 @@ class GpuCollector:
             status=status,
             possible_problem=problem,
             evidence=evidence,
+            measurements=tuple(gpu_measurements),
         )

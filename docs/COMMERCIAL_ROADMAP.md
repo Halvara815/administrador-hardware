@@ -179,7 +179,7 @@ Estimación: 2–4 horas.
 
 ## Fase 3: sensores y comportamiento térmico
 
-Estado: **NO INICIADA**.
+Estado: **NEEDS_USER_VERIFICATION** (2026-09-05: Telemetría térmica mediante arquitectura desacoplada `ThermalSensorProvider`. Implementados `WmiThermalZoneProvider` [dK -> °C y degradación de permisos], `StorageThermalProvider` [reutiliza fiabilidad SMART F2], `NvidiaGpuThermalProvider` [vía binario oficial en rutas protegidas y banderas oficiales de throttling térmico] y `NullThermalProvider` de rollback. AMD/Intel GPU, voltajes y ventiladores de placa no expuestos nativamente se declaran `NOT_SUPPORTED`. 227 passed, 29 subtests passed, ruff limpio, mypy sin errores en 36 archivos. Pendiente validación física en hardware heterogéneo).
 
 Objetivo: medir temperatura, carga, frecuencia y posibles límites térmicos.
 

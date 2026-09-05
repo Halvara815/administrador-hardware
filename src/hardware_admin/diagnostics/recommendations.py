@@ -38,6 +38,24 @@ def _case(result: ComponentResult) -> str:
 
 
 def _cpu(result: ComponentResult) -> Recommendation:
+    prob = (result.possible_problem or "").lower()
+    if "térmic" in prob or "temperatura" in prob:
+        return Recommendation(
+            component=ComponentKind.CPU,
+            title="Monitorear temperatura y refrigeración de CPU",
+            cause=f"Se detectó temperatura elevada en CPU: {result.possible_problem or result.summary}.",
+            steps=(
+                "Comprobar que las rejillas de ventilación no estén obstruidas y que el flujo de aire sea adecuado.",
+                "Verificar que los ventiladores giren de forma continua bajo carga.",
+                "Cerrar procesos en segundo plano que mantengan alta exigencia de procesamiento.",
+                "Si la temperatura se mantiene crítica de forma persistente, consultar con un servicio técnico calificado.",
+            ),
+            rationale=(
+                "Una temperatura elevada sostenida reduce el rendimiento por protección térmica. "
+                "No se deben realizar acciones invasivas de hardware de forma automática."
+            ),
+            verification="Monitorear el equipo en reposo y comprobar si la temperatura desciende a valores normales.",
+        )
     return Recommendation(
         component=ComponentKind.CPU,
         title="Revisar la carga del procesador",

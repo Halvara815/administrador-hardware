@@ -29,6 +29,7 @@ class PowerShellQuery(StrEnum):
     FIRMWARE_INFO = "firmware_info"
     PHYSICAL_MEMORY_MODULES = "physical_memory_modules"
     PERIPHERALS_EXTENDED = "peripherals_extended"
+    THERMAL_ZONE = "thermal_zone"
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +213,10 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
         $data = @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
             Where-Object { $classes -contains $_.Class } |
             Select-Object -First 100 Status,Class,FriendlyName,InstanceId,Problem)
+    """,
+    PowerShellQuery.THERMAL_ZONE: """
+        $data = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue |
+            Select-Object InstanceName, CurrentTemperature, CriticalTripPoint, ThermalStamp)
     """,
 }
 

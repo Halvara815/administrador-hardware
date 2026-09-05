@@ -58,6 +58,27 @@ class EvidenceRecord:
     succeeded: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class ThermalReading:
+    """Lectura de telemetría térmica tipada con trazabilidad completa."""
+
+    source_name: str
+    target_hardware: str
+    temperature_celsius: float | None
+    unit: str
+    collected_at: datetime
+    duration_seconds: float | None
+    confidence: ConfidenceLevel
+    status: HealthStatus
+    is_supported: bool
+    detail: str
+    is_throttling: bool | None = None
+    fan_rpm: int | None = None
+    power_watts: float | None = None
+    clock_mhz: float | None = None
+    measurements: tuple[Measurement, ...] = ()
+
+
 class ConnectivityStage(StrEnum):
     ADAPTER = "adapter"
     LOCAL_IP = "local_ip"

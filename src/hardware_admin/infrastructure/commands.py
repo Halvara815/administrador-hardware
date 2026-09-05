@@ -160,6 +160,32 @@ class SafeCommandRunner:
             timeout=timeout,
         )
 
+    def nvidia_smi_query(self, binary_path: str, timeout: float = 5.0) -> NativeCommandResult:
+        """Ejecuta consulta cerrada a un binario nvidia-smi verificado en ruta de confianza."""
+        fixed_args = [
+            binary_path,
+            "--query-gpu=index,name,temperature.gpu,utilization.gpu,fan.speed,power.draw,clocks.current.graphics,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown",
+            "--format=csv,noheader,nounits",
+        ]
+        return self._execute(fixed_args, timeout=timeout)
+
+
+_TRUSTED_NVIDIA_SMI_CANDIDATES: tuple[Path, ...] = (
+    Path(r"C:\Windows\System32\nvidia-smi.exe"),
+    Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
+)
+
+
+def find_trusted_nvidia_smi() -> str | None:
+    """Busca el ejecutable nvidia-smi únicamente en rutas del sistema confiables."""
+    for candidate in _TRUSTED_NVIDIA_SMI_CANDIDATES:
+        try:
+            if candidate.is_file():
+                return str(candidate)
+        except OSError:
+            continue
+    return None
+
 
 def generate_battery_report(
     target_path: Path,
@@ -169,5 +195,6 @@ def generate_battery_report(
     cmd_runner = runner or SafeCommandRunner()
     resolved = str(target_path.resolve())
     return cmd_runner.battery_report(resolved)
+
 
 
