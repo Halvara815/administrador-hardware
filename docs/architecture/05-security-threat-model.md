@@ -21,7 +21,7 @@
 | Salida enorme o malformada | `MAX_OUTPUT_CHARS` y validación JSON en `parse_json_rows` | `MalformedOutputTests` en `test_powershell.py` y `MalformedOutputScanTests` |
 | Confundir falta de permiso con hardware sano | Estado `ERROR` y mensaje explícito | Test de permiso denegado |
 | Exponer información al exportar | Guardado explícito, identidad omitible y registro sin contenido | `JsonPrivacyTests` y `ExportLoggingTests` |
-| Dependencia comprometida | Mínimas dependencias, revisión y archivo de bloqueo antes de entrega | Escaneo de dependencias |
+| Dependencia comprometida | Mínimas dependencias y archivo de bloqueo | `pip-audit` sobre `requirements.lock` en CI |
 
 ## Principio operativo
 

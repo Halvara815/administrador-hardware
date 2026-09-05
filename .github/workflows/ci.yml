@@ -1,0 +1,55 @@
+name: CI
+
+# La aplicación es sólo para Windows: las consultas usan PowerShell, CIM y PnP,
+# así que ejecutar las puertas en Linux no probaría lo que se distribuye.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gates:
+    name: Pruebas, estilo y tipado
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Instalar dependencias fijadas
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.lock
+          python -m pip install --no-deps -e .
+
+      - name: Pruebas
+        run: python -m pytest -q
+
+      - name: Estilo
+        run: python -m ruff check .
+
+      - name: Tipado
+        run: python -m mypy
+
+  dependencies:
+    name: Escaneo de dependencias
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # Control declarado en el modelo de amenazas: «dependencia comprometida →
+      # mínimas dependencias, revisión y archivo de bloqueo antes de entrega».
+      - name: Auditar requirements.lock
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+          python -m pip_audit --requirement requirements.lock --progress-spinner off

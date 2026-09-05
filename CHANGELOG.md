@@ -68,7 +68,8 @@ Las fases 8 (validación del JSON), 9 (pruebas de los controles declarados
 y registro de exportaciones) y 10 (límites de tiempo e identificador de
 sesión) ya están completadas.
 
-- **Fase 11:** escalado 100/125/150 %, escaneo de dependencias, protocolo de
-  pruebas reales y validación en equipo limpio.
+- **Fase 11 (parcial):** el escalado y el escaneo de dependencias están hechos.
+  Siguen pendientes el protocolo de pruebas reales con hardware físico y la
+  validación del ejecutable en un equipo limpio: ninguna es automatizable.
 - Asesoría de compra y ampliación (slices E1–E8) e integración de IA (I1–I5),
   diseñadas y no iniciadas; no son requisito del enunciado.
