@@ -11,6 +11,10 @@ from typing import Any
 import psutil
 
 from hardware_admin.collectors.base import HardwareCollector
+from hardware_admin.collectors.drivers import DriverCollector
+from hardware_admin.collectors.gpu import GpuCollector
+from hardware_admin.collectors.pnp import PnpDeviceCollector
+from hardware_admin.collectors.storage import StorageCollector
 from hardware_admin.diagnostics.rules import CPU_RULE, MEMORY_RULE
 from hardware_admin.domain.models import (
     ComponentKind,
@@ -178,8 +182,6 @@ class MemoryCollector:
         )
 
 
-from hardware_admin.collectors.storage import StorageCollector
-
 DiskCollector = StorageCollector
 
 
@@ -336,10 +338,6 @@ class NetworkCollector:
             evidence=tuple(evidence_items),
         )
 
-
-from hardware_admin.collectors.drivers import DriverCollector
-from hardware_admin.collectors.gpu import GpuCollector
-from hardware_admin.collectors.pnp import PnpDeviceCollector
 
 PnpCollector = PnpDeviceCollector
 MonitorGpuCollector = GpuCollector

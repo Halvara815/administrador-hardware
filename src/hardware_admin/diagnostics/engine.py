@@ -125,7 +125,9 @@ class RuleBasedDiagnosticEngine:
             conclusion_parts.append(
                 "Algunas comprobaciones no pudieron completarse y no deben interpretarse como sanas."
             )
-        if symptom and not alerts and not failures:
+        # Un fallo de consulta no equivale a hardware sano: si el sintoma persiste,
+        # la orientacion adicional se mantiene aunque alguna comprobacion fallara.
+        if symptom and not alerts:
             conclusion_parts.append(
                 "Como el síntoma persiste sin anomalías básicas, se requiere "
                 "diagnóstico adicional de temperatura, fuente de alimentación, GPU, "

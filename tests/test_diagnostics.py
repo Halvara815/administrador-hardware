@@ -123,6 +123,27 @@ class DiagnosticEngineTests(TestCase):
         self.assertIn("fuente de alimentación", report.conclusion)
         self.assertIn("GPU", report.conclusion)
 
+    def test_symptom_persists_with_failed_query_still_forces_deeper_diagnosis(self) -> None:
+        """Un fallo de consulta no equivale a hardware sano: el sintoma persistente
+        sigue exigiendo diagnostico adicional en lugar de quedarse sin orientacion."""
+        report = RuleBasedDiagnosticEngine().build_report(
+            (
+                result_for(ComponentKind.CPU, HealthStatus.NORMAL, "20% de uso"),
+                result_for(
+                    ComponentKind.DISK,
+                    HealthStatus.ERROR,
+                    "No disponible",
+                    "La consulta no devolvio informacion",
+                ),
+            ),
+            symptom="el equipo se reinicia al jugar",
+        )
+
+        self.assertFalse(report.has_problems)
+        self.assertIn("no deben interpretarse como sanas", report.conclusion)
+        self.assertIn("temperatura", report.conclusion)
+        self.assertIn("fuente de alimentación", report.conclusion)
+
     def test_symptom_without_anomalies_uses_precise_wording(self) -> None:
         report = RuleBasedDiagnosticEngine().build_report(
             (result_for(ComponentKind.SYSTEM, HealthStatus.NORMAL, "Sistema OK"),)
