@@ -7,8 +7,9 @@ ventana, que es como estan escritas las pruebas de interfaz del proyecto.
 from __future__ import annotations
 
 import tkinter as tk
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from tkinter import font as tkfont
 from typing import Any
 
 import customtkinter as ctk
@@ -68,6 +69,34 @@ def gauge_extent(percent: float) -> float:
 def bar_widths(ratios: Sequence[float], width: int) -> list[float]:
     """Ancho en pixeles de cada barra, recortado al carril disponible."""
     return [min(max(ratio, 0.0), 1.0) * width for ratio in ratios]
+
+
+def elide_text(
+    text: str,
+    max_width: float,
+    measure: Callable[[str], float],
+) -> str:
+    """Recorta un texto para que quepa en el ancho dado, con puntos suspensivos.
+
+    `measure` se inyecta para poder comprobar la funcion sin abrir ventana; en
+    la aplicacion es la medicion real de la fuente. Un lienzo no recorta solo:
+    sin esto, una etiqueta larga se dibuja por debajo de la barra y queda
+    ilegible.
+    """
+    if not text or measure(text) <= max_width:
+        return text
+
+    ellipsis = "…"
+    if measure(ellipsis) > max_width:
+        return ""
+
+    cut = len(text)
+    while cut > 0:
+        cut -= 1
+        candidate = text[:cut] + ellipsis
+        if measure(candidate) <= max_width:
+            return candidate
+    return ""
 
 
 def format_rate(bps: float) -> str:
@@ -281,24 +310,35 @@ class BarListChart(_ChartFrame):
 
         self.canvas.configure(height=self.ROW_HEIGHT * len(bars))
         total_width = max(self.canvas.winfo_width(), 1)
-        label_width, value_width = 120, 110
-        track = max(total_width - label_width - value_width, 1)
+        # La columna de etiquetas crece con el grafico, con un tope: los nombres
+        # de adaptador son largos y antes se dibujaban por debajo de la barra.
+        label_width = min(max(int(total_width * 0.22), 120), 260)
+        value_width = 110
+        gap = 12
+        track = max(total_width - label_width - value_width - gap, 1)
+        text_font = ("Segoe UI", 10)
+        measure = tkfont.Font(family=text_font[0], size=text_font[1]).measure
         widths = bar_widths([bar.ratio for bar in bars], track)
 
         for index, (bar, filled) in enumerate(zip(bars, widths)):
             top = index * self.ROW_HEIGHT + 6
             bottom = top + self.ROW_HEIGHT - 14
             self.canvas.create_text(
-                0, (top + bottom) / 2, anchor="w", text=bar.label,
-                fill=theme.MUTED, font=("Segoe UI", 10),
+                0,
+                (top + bottom) / 2,
+                anchor="w",
+                text=elide_text(bar.label, label_width - gap, measure),
+                fill=theme.MUTED,
+                font=text_font,
             )
+            bar_left = label_width + gap
             self.canvas.create_rectangle(
-                label_width, top, label_width + track, bottom,
+                bar_left, top, bar_left + track, bottom,
                 fill=theme.SURFACE_ALT, outline="",
             )
             if filled > 0:
                 self.canvas.create_rectangle(
-                    label_width, top, label_width + filled, bottom,
+                    bar_left, top, bar_left + filled, bottom,
                     fill=bar.color, outline="",
                 )
             self.canvas.create_text(
