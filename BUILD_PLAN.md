@@ -1,6 +1,6 @@
 # Hardware Diagnostic & Repair Assistant — plan de producto
 
-Fecha: 2026-09-05. Estado: **FASES 1, 2 Y 3 COMPLETADAS; fase 4 en curso (rebanada 4A hecha); resto del plan sin implementar**.
+Fecha: 2026-09-05. Estado: **FASES 1, 2, 3 Y 4 COMPLETADAS; fases 5, 6 y 7 sin implementar**.
 Proyecto personal con evolución comercial. Se conserva la aplicación funcional y se amplía por fases.
 El desarrollo continúa cuando el usuario lo indique.
 
@@ -252,7 +252,7 @@ avanzar; no crear carpetas vacías masivamente.
 | 4A | monitoring_service, ui/charts, panel de E/S — **COMPLETADA** | Buffer 300 y parada explícita; series de disco y red en vivo; gates pytest/ruff/mypy en verde | Retirar los dos módulos nuevos y el panel |
 | 4B | Gráficos de CPU, RAM, discos y red — **COMPLETADA** | Medidor y barras por apartado; series numéricas con prefijo `_`; gates pytest/ruff/mypy en verde | Ocultar el panel y conservar la tabla |
 | 4C | diagnostics/recommendations — **COMPLETADA** | Causa, pasos, fundamento, comprobación y si modifica el sistema; en reporte y ficha; gates en verde | Mostrar sólo el problema posible |
-| 4D | Menú de 15 opciones y Salir | Conectividad, Monitorización, Recomendaciones y Exportar; cierre ordenado | Volver a la navegación de 12 |
+| 4D | Menú de 15 opciones y Salir — **COMPLETADA** | 16 entradas; Conectividad y Recomendaciones propias; ver ≠ exportar; cierre ordenado; gates en verde | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
 | 6 | Documentación de producto | Guía de uso, límites, referencias, soporte y pruebas reales | Mantener documentación versionada |
 | 7 | packaging, distribución, README | EXE sin Python instalado, paquete verificable y recorrido completo | Última versión verificada |
@@ -291,7 +291,20 @@ Windows ni reinterpreta porcentajes, de modo que una recomendación no puede
 contradecir la matriz. Un equipo sin anomalías y sin síntoma no genera ninguna.
 Diseño en [docs/superpowers](docs/superpowers/specs/2026-09-05-recomendaciones-design.md).
 
-La rebanada 4D (menú de 15 opciones y Salir) sigue **sin implementar**.
+La **4D** completa el menú: 15 apartados más Salir. Cuatro entradas no
+corresponden a ningún componente —Conectividad, Recomendaciones, Exportar y
+Salir—, así que `NAV_ITEMS` pasa a declarar componente **o** acción, nunca ambos.
+
+Conectividad y Recomendaciones no miden nada nuevo: presentan las etapas que ya
+produce `ConnectivityService` y los procedimientos de la 4C. «14. Generar
+reporte» **muestra** el reporte completo y «15. Exportar diagnóstico» lo
+**guarda**; son acciones distintas, como pide el enunciado.
+
+> **Pendiente de la fase 5:** la opción 15 exporta hoy el reporte HTML. Los
+> formatos JSON y TXT que pide el enunciado se añaden al mismo diálogo cuando se
+> implementen `json_report.py` y `txt_report.py`.
+
+**La fase 4 queda completa.** Sigue la fase 5.
 
 Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
 
