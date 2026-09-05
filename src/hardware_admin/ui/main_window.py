@@ -15,6 +15,8 @@ from typing import Any
 import customtkinter as ctk
 from PIL import Image
 
+from hardware_admin.collectors.core import format_bytes
+from hardware_admin.diagnostics.rules import CPU_RULE, DISK_RULE
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -30,7 +32,14 @@ from hardware_admin.services.monitoring_service import (
 )
 from hardware_admin.services.scan_service import ScanService
 from hardware_admin.ui import icons, theme
-from hardware_admin.ui.charts import SeriesSpec, TimeSeriesChart, format_rate
+from hardware_admin.ui.charts import (
+    Bar,
+    BarListChart,
+    GaugeChart,
+    SeriesSpec,
+    TimeSeriesChart,
+    format_rate,
+)
 
 STATUS_LABELS = {
     HealthStatus.UNKNOWN: "Sin analizar",
@@ -110,6 +119,76 @@ def series_for(
         [item.net_sent_bps for item in samples],
         [item.net_recv_bps for item in samples],
     )
+
+
+def _status_color(status: HealthStatus) -> str:
+    return STATUS_COLORS.get(status, theme.MUTED)
+
+
+def _number_list(facts: dict[str, Any], key: str) -> list[float]:
+    """Lee una serie numerica. Un dato ausente o con otra forma no es un hallazgo."""
+    raw = facts.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [float(item) for item in raw if isinstance(item, int | float)]
+
+
+def _dict_list(facts: dict[str, Any], key: str) -> list[dict[str, Any]]:
+    raw = facts.get(key)
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
+def core_bars(facts: dict[str, Any]) -> list[Bar]:
+    """Una barra por nucleo logico, coloreada con la regla oficial de CPU."""
+    return [
+        Bar(
+            label=f"Núcleo {index}",
+            ratio=value / 100.0,
+            value=f"{value:.1f}%",
+            color=_status_color(CPU_RULE.classify(value)),
+        )
+        for index, value in enumerate(_number_list(facts, "_nucleos"), start=1)
+    ]
+
+
+def volume_bars(facts: dict[str, Any]) -> list[Bar]:
+    """Una barra por unidad montada, con la fraccion ocupada y la regla de disco."""
+    bars: list[Bar] = []
+    for item in _dict_list(facts, "_volumenes"):
+        used = float(item.get("usado", 0.0))
+        free = float(item.get("libre", 0.0))
+        total = used + free
+        percent = float(item.get("porcentaje", 0.0))
+        bars.append(
+            Bar(
+                label=str(item.get("unidad", "?")),
+                ratio=used / total if total > 0 else 0.0,
+                value=f"{format_bytes(used)} de {format_bytes(total)}",
+                color=_status_color(DISK_RULE.classify(percent)),
+            )
+        )
+    return bars
+
+
+def adapter_bars(facts: dict[str, Any]) -> list[Bar]:
+    """Velocidad de enlace por adaptador, en proporcion al mas rapido."""
+    items = _dict_list(facts, "_adaptadores")
+    fastest = max((float(item.get("mbps", 0.0)) for item in items), default=0.0)
+    bars: list[Bar] = []
+    for item in items:
+        mbps = float(item.get("mbps", 0.0))
+        connected = bool(item.get("conectado"))
+        bars.append(
+            Bar(
+                label=str(item.get("nombre", "?")),
+                ratio=mbps / fastest if fastest > 0 else 0.0,
+                value=f"{mbps:.0f} Mbps" if mbps else "No disponible",
+                color=theme.ACCENT_TEXT if connected else theme.MUTED,
+            )
+        )
+    return bars
 
 
 def _format_value(value: Any, indent: str = "") -> str:
@@ -711,6 +790,7 @@ class HardwareAdminApp(ctk.CTk):
         self._build_diagnostic_column(workspace)
         self._build_evidence_console(workspace)
         self._build_monitoring_panel(content)
+        self._build_section_charts(content)
 
     def _build_monitoring_panel(self, master: Any) -> None:
         """Panel de E/S en vivo: oculto salvo en el apartado de monitorizacion."""
@@ -778,6 +858,78 @@ class HardwareAdminApp(ctk.CTk):
         self.net_chart = TimeSeriesChart(panel, "RED", MONITORING_NET_SPECS)
         self.net_chart.grid(row=2, column=0, sticky="ew")
         panel.grid_remove()
+
+    def _build_section_charts(self, master: Any) -> None:
+        """Un panel de graficos por apartado, en el mismo hueco que la fila 3."""
+        self.section_panels: dict[ComponentKind, ctk.CTkFrame] = {}
+
+        cpu_panel = ctk.CTkFrame(master, fg_color="transparent")
+        cpu_panel.grid(row=3, column=0, sticky="ew", pady=(16, 0))
+        cpu_panel.grid_columnconfigure(1, weight=1)
+        self.cpu_gauge = GaugeChart(cpu_panel, "USO TOTAL")
+        self.cpu_gauge.grid(row=0, column=0, sticky="nw", padx=(0, 12))
+        self.cpu_cores = BarListChart(cpu_panel, "USO POR NÚCLEO LÓGICO")
+        self.cpu_cores.grid(row=0, column=1, sticky="new")
+        cpu_panel.grid_remove()
+        self.section_panels[ComponentKind.CPU] = cpu_panel
+
+        memory_panel = ctk.CTkFrame(master, fg_color="transparent")
+        memory_panel.grid(row=3, column=0, sticky="ew", pady=(16, 0))
+        memory_panel.grid_columnconfigure(1, weight=1)
+        self.memory_gauge = GaugeChart(memory_panel, "USO DE MEMORIA")
+        self.memory_gauge.grid(row=0, column=0, sticky="nw", padx=(0, 12))
+        self.memory_bars = BarListChart(memory_panel, "ASIGNACIÓN DE CAPACIDAD")
+        self.memory_bars.grid(row=0, column=1, sticky="new")
+        memory_panel.grid_remove()
+        self.section_panels[ComponentKind.MEMORY] = memory_panel
+
+        disk_panel = ctk.CTkFrame(master, fg_color="transparent")
+        disk_panel.grid(row=3, column=0, sticky="ew", pady=(16, 0))
+        disk_panel.grid_columnconfigure(0, weight=1)
+        self.disk_bars = BarListChart(disk_panel, "ESPACIO OCUPADO POR UNIDAD")
+        self.disk_bars.grid(row=0, column=0, sticky="ew")
+        disk_panel.grid_remove()
+        self.section_panels[ComponentKind.DISK] = disk_panel
+
+        network_panel = ctk.CTkFrame(master, fg_color="transparent")
+        network_panel.grid(row=3, column=0, sticky="ew", pady=(16, 0))
+        network_panel.grid_columnconfigure(0, weight=1)
+        self.network_bars = BarListChart(network_panel, "VELOCIDAD DE ENLACE POR ADAPTADOR")
+        self.network_bars.grid(row=0, column=0, sticky="ew")
+        network_panel.grid_remove()
+        self.section_panels[ComponentKind.NETWORK] = network_panel
+
+    def _draw_section_charts(self, component: ComponentKind) -> None:
+        """Dibuja el panel del apartado con lo ultimo analizado, si lo hay."""
+        result = self.results_by_kind.get(component)
+        facts: dict[str, Any] = dict(result.facts) if result else {}
+        color = _status_color(result.status) if result else theme.MUTED
+
+        if component is ComponentKind.CPU:
+            usage = float(facts.get("_uso", 0.0))
+            self.cpu_gauge.update_value(usage, str(facts.get("Modelo", ""))[:38], color)
+            self.cpu_cores.update_bars(core_bars(facts))
+        elif component is ComponentKind.MEMORY:
+            usage = float(facts.get("_uso", 0.0))
+            raw_memory = facts.get("_memoria")
+            memory: dict[str, Any] = raw_memory if isinstance(raw_memory, dict) else {}
+            self.memory_gauge.update_value(usage, str(facts.get("Total", "")), color)
+            used = float(memory.get("usada", 0.0))
+            available = float(memory.get("disponible", 0.0))
+            total = float(memory.get("total", 0.0))
+            bars = (
+                [
+                    Bar("En uso", used / total, format_bytes(used), color),
+                    Bar("Disponible", available / total, format_bytes(available), theme.GREEN),
+                ]
+                if total > 0
+                else []
+            )
+            self.memory_bars.update_bars(bars, format_bytes(total) if total else "")
+        elif component is ComponentKind.DISK:
+            self.disk_bars.update_bars(volume_bars(facts), str(facts.get("Resumen tecnológico", "")))
+        elif component is ComponentKind.NETWORK:
+            self.network_bars.update_bars(adapter_bars(facts))
 
     def start_monitoring(self) -> None:
         self.monitoring_service.start()
@@ -1000,12 +1152,19 @@ class HardwareAdminApp(ctk.CTk):
             )
         self.matrix.select(component)
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
-        # El panel en vivo solo tiene sentido en el apartado de E/S.
+        # Un unico hueco en la fila 3: el panel en vivo en E/S, y el de
+        # graficos del apartado en CPU, RAM, discos y red.
         if component is ComponentKind.IO:
             self.monitoring_panel.grid()
             self._draw_monitoring()
         else:
             self.monitoring_panel.grid_remove()
+        for kind, panel in self.section_panels.items():
+            if kind is component:
+                panel.grid()
+                self._draw_section_charts(kind)
+            else:
+                panel.grid_remove()
         self._show_selected_evidence()
 
     def start_scan(self, only: ComponentKind | None = None) -> None:
@@ -1074,6 +1233,9 @@ class HardwareAdminApp(ctk.CTk):
             self.results_by_kind[result.component] = result
             self.matrix.update_result(result)
         self.report = self._merged_report()
+        # Refrescar el panel visible: sin esto los graficos seguirian mostrando
+        # el analisis anterior hasta que el usuario cambiara de apartado.
+        self._draw_section_charts(self.selected_component)
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")

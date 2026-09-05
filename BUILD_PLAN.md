@@ -250,7 +250,7 @@ avanzar; no crear carpetas vacías masivamente.
 | 2 | commands, network, connectivity, UI — **COMPLETADA** | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada — gates pytest/ruff/mypy en verde | Omitir pruebas externas y conservar datos locales |
 | 3 | pnp, drivers, storage, gpu — **COMPLETADA** | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma — gates pytest/ruff/mypy en verde | Conservar core.py hasta paridad |
 | 4A | monitoring_service, ui/charts, panel de E/S — **COMPLETADA** | Buffer 300 y parada explícita; series de disco y red en vivo; gates pytest/ruff/mypy en verde | Retirar los dos módulos nuevos y el panel |
-| 4B | Gráficos de CPU, RAM, discos y red desde `ComponentResult.facts` | Un gráfico por apartado, sin dependencias nuevas | Ocultar el gráfico y conservar la tabla |
+| 4B | Gráficos de CPU, RAM, discos y red — **COMPLETADA** | Medidor y barras por apartado; series numéricas con prefijo `_`; gates pytest/ruff/mypy en verde | Ocultar el panel y conservar la tabla |
 | 4C | diagnostics/recommendations | Causa, pasos ordenados, fundamento y comprobación posterior | Mostrar sólo el problema posible |
 | 4D | Menú de 15 opciones y Salir | Conectividad, Monitorización, Recomendaciones y Exportar; cierre ordenado | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
@@ -265,7 +265,21 @@ parada explícitos, y `ui/charts` la dibuja en dos gráficos apilados de escala
 independiente dentro del apartado de E/S. Disco y red no comparten eje porque
 sus tasas difieren en órdenes de magnitud. Diseño y plan en
 [docs/superpowers](docs/superpowers/specs/2026-09-05-monitorizacion-en-vivo-design.md).
-Las rebanadas 4B, 4C y 4D siguen **sin implementar**.
+La **4B** también está implementada. Los `facts` publicaban solo texto ya
+formateado (`'43.5%'`, `'15.9 GB'`), inservible para graficar, así que se
+establece esta convención:
+
+> **Las claves de `facts` que empiezan por `_` son series numéricas para los
+> gráficos, no texto para mostrar.** El reporte HTML y la ficha de la interfaz
+> las omiten. Al añadir una serie nueva, respetar el prefijo: sin él aparecerá
+> como texto crudo en el reporte.
+
+Series actuales: `_uso` y `_nucleos` (CPU), `_uso` y `_memoria` (RAM),
+`_volumenes` (almacenamiento) y `_adaptadores` (red). Ninguna clave de texto se
+modificó ni se renombró, de modo que matriz, ficha, reporte y las pruebas de las
+fases 1-3 siguen leyendo exactamente lo mismo.
+
+Las rebanadas 4C y 4D siguen **sin implementar**.
 
 Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
 

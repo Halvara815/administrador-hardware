@@ -3,11 +3,15 @@ from unittest import TestCase
 
 from hardware_admin.domain.models import ComponentKind
 from hardware_admin.services.monitoring_service import Sample
+from hardware_admin.ui import theme
 from hardware_admin.ui.main_window import (
     MONITORING_DISK_SPECS,
     MONITORING_NET_SPECS,
     NAV_ITEMS,
+    adapter_bars,
+    core_bars,
     series_for,
+    volume_bars,
 )
 
 
@@ -44,3 +48,53 @@ class MonitoringPanelContractTests(TestCase):
 
     def test_series_for_an_empty_capture_yields_four_empty_series(self) -> None:
         self.assertEqual(series_for([]), ([], [], [], []))
+
+
+class SectionChartContractTests(TestCase):
+    """Conversion de facts a barras: dato ausente no revienta, se dibuja vacio."""
+
+    def test_core_bars_are_built_from_the_numeric_series(self) -> None:
+        bars = core_bars({"_nucleos": [10.0, 95.0]})
+
+        self.assertEqual(len(bars), 2)
+        self.assertEqual(bars[0].label, "Núcleo 1")
+        self.assertAlmostEqual(bars[0].ratio, 0.10)
+        self.assertEqual(bars[1].value, "95.0%")
+
+    def test_core_bars_colour_by_the_official_thresholds(self) -> None:
+        """El color sigue la regla 70/90 de la fase 1, no un criterio nuevo."""
+        bars = core_bars({"_nucleos": [10.0, 75.0, 95.0]})
+
+        self.assertEqual(bars[0].color, theme.GREEN)
+        self.assertEqual(bars[1].color, theme.YELLOW)
+        self.assertEqual(bars[2].color, theme.RED)
+
+    def test_volume_bars_use_the_used_fraction(self) -> None:
+        bars = volume_bars(
+            {"_volumenes": [{"unidad": "C:\\", "usado": 25.0, "libre": 75.0, "porcentaje": 25.0}]}
+        )
+
+        self.assertEqual(len(bars), 1)
+        self.assertEqual(bars[0].label, "C:\\")
+        self.assertAlmostEqual(bars[0].ratio, 0.25)
+
+    def test_adapter_bars_scale_against_the_fastest_link(self) -> None:
+        bars = adapter_bars(
+            {
+                "_adaptadores": [
+                    {"nombre": "Ethernet", "mbps": 1000.0, "conectado": True},
+                    {"nombre": "Wi-Fi", "mbps": 250.0, "conectado": False},
+                ]
+            }
+        )
+
+        self.assertAlmostEqual(bars[0].ratio, 1.0)
+        self.assertAlmostEqual(bars[1].ratio, 0.25)
+        self.assertEqual(bars[1].color, theme.MUTED)
+
+    def test_missing_series_yield_no_bars_instead_of_raising(self) -> None:
+        """Si el recolector fallo no hay serie: se dibuja vacio, no se revienta."""
+        self.assertEqual(core_bars({}), [])
+        self.assertEqual(volume_bars({}), [])
+        self.assertEqual(adapter_bars({}), [])
+        self.assertEqual(core_bars({"_nucleos": "no disponible"}), [])
