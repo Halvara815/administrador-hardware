@@ -73,3 +73,58 @@ class StorageCollectorTests(TestCase):
         self.assertIn("Failing HDD", result.possible_problem or "")
         self.assertIn("salud física", result.possible_problem or "")
 
+    @patch("psutil.disk_partitions")
+    @patch("psutil.disk_usage")
+    def test_usb_ok_without_volume_is_a_localized_case_not_a_bus_failure(
+        self, mock_usage: MagicMock, mock_partitions: MagicMock
+    ) -> None:
+        """Caso «USB OK sin volumen» del plan: la memoria USB esta presente y sana
+        pero Windows no expone volumen. Es deteccion/configuracion del periferico,
+        no una condena del bus ni un dano fisico."""
+        mock_partitions.return_value = []
+        phys_json = "[]"
+        # Asociacion reportada por Windows: disco USB sano y sin letra de unidad.
+        usb_json = (
+            '[{"Numero":2,"Dispositivo":"SanDisk Cruzer","Salud":"Healthy",'
+            '"Estado":"Online","EstiloParticion":"RAW","Volumenes":""}]'
+        )
+
+        def run_side_effect(query: PowerShellQuery) -> CommandResult:
+            if query == PowerShellQuery.USB_STORAGE:
+                return mock_ps_result(usb_json, query)
+            if query == PowerShellQuery.PHYSICAL_DISKS:
+                return mock_ps_result(phys_json, query)
+            return mock_ps_result("[]", query)
+
+        self.runner.run.side_effect = run_side_effect
+
+        result = self.collector.collect()
+        self.assertEqual(result.status, HealthStatus.WARNING)
+        self.assertEqual(result.facts.get("Caso"), "USB-SIN-VOLUMEN")
+        problem = result.possible_problem or ""
+        self.assertIn("SanDisk Cruzer", problem)
+        self.assertIn("sin volumen", problem.lower())
+        self.assertNotIn("daño físico", problem)
+
+    @patch("psutil.disk_partitions")
+    @patch("psutil.disk_usage")
+    def test_usb_storage_with_volume_letter_is_not_flagged(
+        self, mock_usage: MagicMock, mock_partitions: MagicMock
+    ) -> None:
+        """Un USB sano y con letra de unidad no debe generar el caso anterior."""
+        mock_partitions.return_value = []
+        usb_json = (
+            '[{"Numero":2,"Dispositivo":"SanDisk Cruzer","Salud":"Healthy",'
+            '"Estado":"Online","EstiloParticion":"MBR","Volumenes":"E"}]'
+        )
+
+        def run_side_effect(query: PowerShellQuery) -> CommandResult:
+            if query == PowerShellQuery.USB_STORAGE:
+                return mock_ps_result(usb_json, query)
+            return mock_ps_result("[]", query)
+
+        self.runner.run.side_effect = run_side_effect
+
+        result = self.collector.collect()
+        self.assertEqual(result.status, HealthStatus.NORMAL)
+        self.assertIsNone(result.facts.get("Caso"))

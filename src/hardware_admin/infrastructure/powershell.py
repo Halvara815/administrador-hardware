@@ -21,6 +21,7 @@ class PowerShellQuery(StrEnum):
     DISKS = "disks"
     PHYSICAL_DISKS = "physical_disks"
     VOLUMES = "volumes"
+    USB_STORAGE = "usb_storage"
     NETWORK_ADAPTERS = "network_adapters"
     NETWORK_CONFIGURATION = "network_configuration"
 
@@ -105,6 +106,21 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
     PowerShellQuery.VOLUMES: """
         $data = @(Get-Volume | Select-Object `
             DriveLetter,FileSystemLabel,FileSystem,DriveType,HealthStatus,OperationalStatus,Size,SizeRemaining)
+    """,
+    PowerShellQuery.USB_STORAGE: """
+        $data = @(Get-Disk | Where-Object {$_.BusType -eq 'USB'} | ForEach-Object {
+            $numero = $_.Number
+            $letras = @(Get-Partition -DiskNumber $numero -ErrorAction SilentlyContinue |
+                Where-Object {$_.DriveLetter} | ForEach-Object {[string]$_.DriveLetter})
+            [PSCustomObject]@{
+                Numero=$numero;
+                Dispositivo=$_.FriendlyName;
+                Salud=$_.HealthStatus;
+                Estado=$_.OperationalStatus;
+                EstiloParticion=$_.PartitionStyle;
+                Volumenes=($letras -join ',');
+            }
+        })
     """,
     PowerShellQuery.NETWORK_ADAPTERS: """
         $data = @(Get-NetAdapter | Select-Object Name,InterfaceDescription,

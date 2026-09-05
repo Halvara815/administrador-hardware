@@ -52,6 +52,38 @@ class DiagnosticEngineTests(TestCase):
         self.assertIn("USB", report.conclusion)
         self.assertTrue(report.has_problems)
 
+    def test_cpu_alone_is_explained_as_probable_cause_of_slowness(self) -> None:
+        """Caso «CPU individual» del plan: CPU98/RAM52/disco30 -> carga de CPU alta."""
+        report = RuleBasedDiagnosticEngine().build_report(
+            (
+                result_for(ComponentKind.CPU, HealthStatus.CRITICAL, "98% de uso", "Carga elevada"),
+                result_for(ComponentKind.MEMORY, HealthStatus.NORMAL, "52% de uso"),
+                result_for(ComponentKind.DISK, HealthStatus.NORMAL, "30% ocupado"),
+            )
+        )
+
+        self.assertTrue(report.has_problems)
+        self.assertIn("carga de CPU", report.conclusion)
+        self.assertIn("98% de uso", report.conclusion)
+        self.assertNotIn("memoria RAM", report.conclusion)
+
+    def test_case_c4_cpu_and_memory_saturated_with_the_rest_normal(self) -> None:
+        """Caso C4 del plan: CPU97/RAM91/disco12 y el resto normal."""
+        report = RuleBasedDiagnosticEngine().build_report(
+            (
+                result_for(ComponentKind.CPU, HealthStatus.CRITICAL, "97% de uso", "Carga elevada"),
+                result_for(ComponentKind.MEMORY, HealthStatus.CRITICAL, "91% de uso", "Poca memoria"),
+                result_for(ComponentKind.DISK, HealthStatus.NORMAL, "12% ocupado"),
+                result_for(ComponentKind.USB, HealthStatus.NORMAL, "8 disp. USB conectados"),
+            )
+        )
+
+        self.assertTrue(report.has_problems)
+        self.assertIn("saturación de recursos", report.conclusion)
+        self.assertIn("97% de uso", report.conclusion)
+        self.assertIn("91% de uso", report.conclusion)
+        self.assertNotIn("También se detectó", report.conclusion)
+
     def test_query_failure_becomes_limitation_not_hardware_problem(self) -> None:
         report = RuleBasedDiagnosticEngine().build_report(
             (

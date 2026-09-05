@@ -71,3 +71,21 @@ class PnpCollectorTests(TestCase):
         self.assertIn("Realtek PCIe GbE Family Controller", result.possible_problem or "")
         self.assertIn("inserción física", result.possible_problem or "")
 
+    def test_usb_absent_list_does_not_prove_the_device_never_existed(self) -> None:
+        """Caso «USB ausente» del plan: una lista vacia no demuestra ausencia fisica.
+        No confundir el PASS de una consulta con salud ni con inexistencia."""
+        self.runner.run.return_value = mock_ps_result("[]", PowerShellQuery.USB_PRESENT)
+
+        collector = PnpDeviceCollector(
+            self.runner,
+            ComponentKind.USB,
+            "USB",
+            PowerShellQuery.USB_PRESENT,
+        )
+        result = collector.collect()
+
+        self.assertEqual(result.status, HealthStatus.NORMAL)
+        self.assertEqual(result.facts.get("Caso"), "USB-AUSENTE")
+        cobertura = str(result.facts.get("Limitación de cobertura", ""))
+        self.assertIn("no demuestra", cobertura)
+        self.assertIn("ID", cobertura)

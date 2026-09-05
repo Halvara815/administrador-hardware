@@ -185,8 +185,13 @@ No diagnosticar daño físico basándose únicamente en porcentajes de utilizaci
 | C3 | Controlador USB OK; memoria error; driver problema; sin disco | Detección/configuración/driver del periférico, no condenar todo el bus |
 | C4 | CPU97/RAM91/disco12; resto normal | Recursos elevados; revisar procesos, aplicaciones, servicios, inicio y memoria |
 | C5 | Todo OK, reinicio al jugar | Sin anomalías básicas; investigar temperatura, fuente, GPU, drivers, eventos, RAM y hardware |
+| USB ausente | Consulta USB sin filas | Lista vacía no prueba ausencia física; confirmar por ID antes de descartar el bus |
+| USB con error | Periférico con código, host OK | Cubierto por C3: falla localizada sin condenar el bus |
+| USB sin volumen | Medio USB sano sin letra de unidad | Detección/configuración del periférico; asignar letra o revisar formato, sin daño físico |
 
-Añadir casos USB ausente, USB presente con error y USB OK sin volumen.
+Los casos USB ausente, USB presente con error y USB OK sin volumen ya están
+implementados y cubiertos por pruebas; la asociación disco-volumen la resuelve
+Windows mediante Get-Disk/Get-Partition, nunca por coincidencia de nombres.
 Para GPU con síntomas y estado OK, incluir también aplicación, DirectX
 y conexiones. Memoria reportada por WMI no se presenta como VRAM exacta garantizada.
 Estado Unknown requiere investigación; no prueba daño. Guardar el estado original.

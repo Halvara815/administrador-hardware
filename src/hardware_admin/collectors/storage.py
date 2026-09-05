@@ -65,10 +65,12 @@ class StorageCollector:
         disks_result = self.runner.run(PowerShellQuery.DISKS)
         phys_result = self.runner.run(PowerShellQuery.PHYSICAL_DISKS)
         vol_result = self.runner.run(PowerShellQuery.VOLUMES)
+        usb_result = self.runner.run(PowerShellQuery.USB_STORAGE)
 
         disks = parse_json_rows(disks_result)
         physical_disks = parse_json_rows(phys_result)
         powershell_volumes = parse_json_rows(vol_result)
+        usb_storage_rows = parse_json_rows(usb_result)
 
         # Normalización de discos físicos y detección de medios (SSD vs HDD)
         norm_physical: list[dict[str, Any]] = []
@@ -102,6 +104,20 @@ class StorageCollector:
                 }
             )
 
+        # Caso «USB OK sin volumen»: la asociacion disco-particion la resuelve Windows
+        # (Get-Disk -> Get-Partition), nunca la coincidencia de nombres. Un medio sano
+        # que no expone letra de unidad es un problema de deteccion o configuracion del
+        # periferico, no una prueba de dano fisico ni un motivo para condenar el bus.
+        # Exigir que la fila declare el campo: si Windows no lo informa el dato esta
+        # ausente, y un dato ausente no es un hallazgo.
+        usb_without_volume = [
+            row
+            for row in usb_storage_rows
+            if "Volumenes" in row
+            and not str(row.get("Volumenes") or "").strip()
+            and str(row.get("Salud") or "Healthy").upper() in {"HEALTHY", "OK"}
+        ]
+
         max_usage = max((float(item["UsoNum"]) for item in volumes), default=0.0)
         status = DISK_RULE.classify(max_usage)
 
@@ -114,6 +130,20 @@ class StorageCollector:
         elif status is HealthStatus.WARNING:
             problem = f"Poco espacio disponible en disco (máximo {max_usage:.1f}% ocupado)"
 
+        usb_case: str | None = None
+        if usb_without_volume and status is HealthStatus.NORMAL:
+            nombres = ", ".join(
+                str(row.get("Dispositivo") or f"Disco USB {row.get('Numero')}")
+                for row in usb_without_volume
+            )
+            status = HealthStatus.WARNING
+            usb_case = "USB-SIN-VOLUMEN"
+            problem = (
+                f"Medio USB presente y sano sin volumen accesible ({nombres}). "
+                "Revisar la deteccion o la configuracion del periferico: asignar letra, "
+                "comprobar el formato o probar en otro puerto. El bus USB no queda condenado."
+            )
+
         clean_volumes = [{k: v for k, v in item.items() if k != "UsoNum"} for item in volumes]
         facts: dict[str, Any] = {
             "Unidades": clean_volumes,
@@ -122,6 +152,18 @@ class StorageCollector:
         }
         if powershell_volumes:
             facts["Volúmenes detectados"] = len(powershell_volumes)
+        if usb_storage_rows:
+            facts["Almacenamiento USB"] = [
+                {
+                    "Dispositivo": row.get("Dispositivo") or f"Disco USB {row.get('Numero')}",
+                    "Salud": row.get("Salud") or "No disponible",
+                    "Estilo de partición": row.get("EstiloParticion") or "No disponible",
+                    "Volúmenes": str(row.get("Volumenes") or "").strip() or "Sin volumen",
+                }
+                for row in usb_storage_rows
+            ]
+        if usb_case:
+            facts["Caso"] = usb_case
 
         volume_text = "\n".join(
             f"{v['Unidad']} | {v['Sistema']} | {v['Capacidad']} | Uso {v['Uso']}"

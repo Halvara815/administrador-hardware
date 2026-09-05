@@ -116,6 +116,12 @@ class PnpDeviceCollector:
                 if problems
                 else f"{len(rows)} disp. USB conectados"
             )
+            if not rows:
+                # Caso «USB ausente»: separar disponibilidad de severidad. Que la
+                # consulta no devuelva filas no prueba que el equipo carezca de USB
+                # ni que un dispositivo esperado no haya existido nunca.
+                case_tag = "USB-AUSENTE"
+                summary = "Sin dispositivos USB en la consulta"
 
         elif self.component is ComponentKind.PCI:
             if problems:
@@ -150,6 +156,12 @@ class PnpDeviceCollector:
         }
         if case_tag:
             facts["Caso"] = case_tag
+        if self.component is ComponentKind.USB and not rows:
+            facts["Limitación de cobertura"] = (
+                "La consulta no devolvió dispositivos USB. Una lista vacía no demuestra "
+                "ausencia física ni que un dispositivo esperado no haya existido: "
+                "confirmar por ID de instancia antes de descartar el bus."
+            )
         if self.component is ComponentKind.USB and host_controllers:
             facts["Controladores anfitriones"] = len(host_controllers)
             facts["Periféricos conectados"] = len(peripherals)
