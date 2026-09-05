@@ -1,5 +1,11 @@
 # Requisitos y alcance
 
+> Alcance histórico v0.1.0. El nuevo enunciado sustituye las doce opciones por
+> quince más Salir y amplía los casos y entregables. Consultar el
+> [plan vigente](../../BUILD_PLAN.md) y la
+> [trazabilidad actual](../ASSIGNMENT_TRACEABILITY.md).
+> Las nuevas capacidades están pendientes; se conserva la decisión sin DB.
+
 ## Requisitos confirmados
 
 - Aplicación gráfica de escritorio; no se usará una interfaz de terminal.
@@ -33,4 +39,3 @@
 - Objetivo inicial: Windows 10/11 con PowerShell disponible.
 - Un usuario y un análisis activo por proceso.
 - Los reportes se guardan únicamente cuando el usuario selecciona una ubicación.
-

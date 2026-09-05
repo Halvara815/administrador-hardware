@@ -1,5 +1,9 @@
 # Trazabilidad de requisitos
 
+> Evidencia histórica del enunciado anterior. Para los 46 apartados nuevos y la
+> rúbrica de 25 puntos consultar [ASSIGNMENT_TRACEABILITY.md](ASSIGNMENT_TRACEABILITY.md).
+> Los resultados siguientes no certifican cumplimiento de los nuevos requisitos.
+
 Fecha de verificación: 2026-09-04
 
 | # | Requisito | Implementación | Evidencia |

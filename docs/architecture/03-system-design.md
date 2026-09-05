@@ -1,5 +1,10 @@
 # Diseño del sistema
 
+> Este documento describe la base v0.1.0. La estructura objetivo, contratos,
+> límites, menú y fases del nuevo enunciado están en
+> [BUILD_PLAN.md](../../BUILD_PLAN.md). Su implementación no está iniciada.
+> Se conservará el monolito modular y la ausencia de base de datos.
+
 ## Decisión
 
 Monolito modular de escritorio en un solo proceso. La interfaz desconoce cómo se
@@ -49,4 +54,3 @@ obtienen los datos; recibe modelos normalizados del servicio de análisis.
 - Timeout, permiso insuficiente y salida inválida son estados explícitos.
 - No se interpreta “dato ausente” como “hardware sano”.
 - Los resultados exitosos se conservan aunque otro recolector falle.
-

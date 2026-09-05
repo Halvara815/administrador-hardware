@@ -1,5 +1,16 @@
 # Administrador de Hardware
 
+> Nueva etapa planificada: **Hardware Diagnostic & Repair Assistant**.
+> El [plan vigente](BUILD_PLAN.md) y la
+> [trazabilidad del nuevo enunciado](docs/ASSIGNMENT_TRACEABILITY.md) describen
+> los cambios pendientes. Esta reestructuración es documental; las funciones
+> enumeradas debajo corresponden a la versión actual. Se mantiene **sin DB**.
+> La [hoja de ruta comercial](docs/COMMERCIAL_ROADMAP.md) queda diferida.
+
+La [investigación de IA y compatibilidad](docs/RESEARCH_AI_HARDWARE.md) reúne
+repositorios, fuentes y el diseño futuro de recomendaciones de controladores/RAM.
+Esta función todavía no está implementada.
+
 Aplicación de escritorio para Windows que recopila información real del equipo,
 presenta evidencia técnica similar a una terminal y genera un diagnóstico
 justificado. El proyecto no utiliza base de datos ni servicios externos.
