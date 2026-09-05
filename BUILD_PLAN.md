@@ -1,6 +1,11 @@
 # Hardware Diagnostic & Repair Assistant — plan de producto
 
-Fecha: 2026-09-05. Estado: **FASES 1, 2, 3 Y 4 COMPLETADAS; fases 5, 6 y 7 sin implementar**.
+Fecha: 2026-09-05. Estado: **LAS SIETE FASES IMPLEMENTADAS.**
+Quedan dos verificaciones que exigen intervención humana y no pueden
+automatizarse: ejecutar el [protocolo de pruebas
+reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) con dispositivos físicos, y
+validar el ejecutable en un equipo limpio distinto del de desarrollo. Hasta
+entonces no se declara una versión validada en todos los equipos.
 Proyecto personal con evolución comercial. Se conserva la aplicación funcional y se amplía por fases.
 El desarrollo continúa cuando el usuario lo indique.
 
@@ -255,7 +260,7 @@ avanzar; no crear carpetas vacías masivamente.
 | 4D | Menú de 15 opciones y Salir — **COMPLETADA** | 16 entradas; Conectividad y Recomendaciones propias; ver ≠ exportar; cierre ordenado; gates en verde | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT — **COMPLETADA** | schema_version 1.0, UTF-8, equipo/usuario omitibles, cobertura, límites y recomendaciones; gates en verde | HTML anterior intacto |
 | 6 | Documentación de producto — **COMPLETADA** (pruebas reales pendientes de ejecutar) | Guía de uso, notas de versión, límites, licencias, política de datos, soporte y protocolo PR-01…PR-18 | Documentación versionada |
-| 7 | packaging, distribución, README | EXE sin Python instalado, paquete verificable y recorrido completo | Última versión verificada |
+| 7 | packaging, distribución, README — **COMPLETADA** (validación en equipo limpio pendiente) | EXE de 21,8 MB con runtime propio, ZIP con LEEME/CHANGELOG/licencias y huella SHA-256 | Última versión verificada |
 
 ### Especificación técnica del apartado de gráficos (Fase 4)
 
