@@ -55,6 +55,9 @@ PowerShell. Las versiones están registradas en requirements.lock.
   compatibilidad y rendimiento GPU, solución guiada y comparación; pendiente de implementar.
 - [Evolución comercial](docs/COMMERCIAL_ROADMAP.md): distribución, soporte y validación.
 - [Verificación histórica](docs/architecture/08-production-readiness.md): evidencia con alcance limitado.
+- [Guía de uso](docs/USER_GUIDE.md): instalación, uso, política de datos y solución de problemas.
+- [Notas de versión](CHANGELOG.md): cambios y limitaciones conocidas.
+- [Pruebas reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md): protocolo con hardware físico, pendiente de ejecutar.
 
 ## Datos y límites
 
@@ -74,9 +77,33 @@ pagos o cuotas comerciales requerirá una decisión independiente.
 ## Distribución y soporte
 
 El repositorio contiene código, pruebas y documentación de desarrollo.
-Los paquetes para usuarios incluirán ejecutable, dependencias, guía de uso,
-notas de versión y avisos de terceros. No se declara todavía una versión
-comercial validada en todos los equipos.
+
+`build.cmd` ejecuta las tres puertas de calidad —pytest, ruff y mypy—, genera el
+ejecutable con PyInstaller y deja en `release/` el ZIP junto a su huella
+SHA-256. El paquete incluye:
+
+```text
+AdministradorDeHardware-v0.1.0-windows-x64.zip
+  AdministradorDeHardware/
+    AdministradorDeHardware.exe
+    _internal/                  intérprete y dependencias
+    LEEME.txt                   guía rápida
+    CHANGELOG.md                notas de versión y limitaciones conocidas
+    THIRD_PARTY_NOTICES.txt     licencias de terceros
+```
+
+Verificado: el ejecutable arranca y completa un análisis sin Python instalado
+en el entorno. **Falta validarlo en un equipo limpio distinto del de
+desarrollo** y ejecutar el [protocolo de pruebas
+reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md), que requiere manipular
+dispositivos físicos. Hasta entonces no se declara una versión comercial
+validada en todos los equipos.
+
+Para comprobar la integridad del paquete:
+
+```powershell
+Get-FileHash .\AdministradorDeHardware-v0.1.0-windows-x64.zip -Algorithm SHA256
+```
 
 Para reportar problemas, incluir versión, Windows, pasos de reproducción y
 mensaje de error; evitar adjuntar seriales, claves o reportes personales completos.

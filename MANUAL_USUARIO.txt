@@ -1,51 +1,105 @@
 ADMINISTRADOR DE HARDWARE 0.1.0
 ================================
 
+Guia rapida. La guia completa, con politica de datos y solucion de problemas,
+esta en docs/USER_GUIDE.md. Las limitaciones conocidas, en CHANGELOG.md.
+
+
+LO PRIMERO QUE DEBE SABER
+-------------------------
+Que el analisis no encuentre anomalias NO significa que el hardware este libre
+de fallas: significa que los indicadores consultados en ese momento no
+mostraron anomalias. Un fallo de consulta o un permiso denegado tampoco
+equivalen a un componente sano.
+
+El programa NO repara. Propone procedimientos y avisa cuando modifican el
+sistema, pero los aplica usted.
+
+
 REQUISITOS
 ----------
 - Windows 10 u 11 de 64 bits.
-- PowerShell y los servicios de administración de Windows disponibles.
-- No requiere instalar Python para usar la versión incluida en dist.
+- PowerShell disponible (viene con el sistema).
+- No requiere instalar Python.
+- Algunas consultas dan mas detalle si ejecuta el programa como administrador.
+
 
 INICIO
 ------
-1. Abra la carpeta AdministradorDeHardware.
-2. Ejecute AdministradorDeHardware.exe.
+1. Abra la carpeta HardwareDiagnostic.
+2. Ejecute HardwareDiagnostic.exe.
 3. Presione ANALIZAR EQUIPO.
-4. Espere a que finalicen las once comprobaciones.
+4. Espere a que terminen las once comprobaciones.
+
+
+EL MENU: 15 APARTADOS MAS SALIR
+-------------------------------
+ 1. Diagnostico general        9. Controladores
+ 2. CPU                       10. Dispositivos con problemas
+ 3. RAM                       11. Conectividad
+ 4. PCI / PCIe                12. Monitorizacion
+ 5. Red                       13. Recomendaciones
+ 6. USB                       14. Generar reporte
+ 7. Almacenamiento            15. Exportar diagnostico
+ 8. GPU / video                0. Salir
+
 
 USO DE LA PANTALLA
 ------------------
 - Las tarjetas superiores resumen CPU, RAM, discos y red.
 - La matriz central muestra evidencia, estado y posible problema.
-- Las opciones 1 a 11 seleccionan el componente que desea revisar.
-- EVIDENCIA TÉCNICA muestra la salida de la consulta seleccionada.
-- El botón Copiar lleva esa evidencia al portapapeles.
-- La opción 12 genera un reporte HTML en la ubicación elegida.
+- La consola de la derecha muestra los datos y la evidencia tecnica.
+- Cada apartado dibuja su propio grafico bajo la matriz.
+- El boton de la derecha analiza SOLO la seccion seleccionada.
 
-ESTADOS
--------
-- Normal: el indicador medido está dentro del umbral esperado.
-- Advertencia: existe uso elevado o una condición que conviene revisar.
-- Problema: Windows informó un error o se superó un umbral crítico.
-- Error de consulta: no fue posible obtener el dato. No significa que el
-  dispositivo esté sano ni necesariamente que esté dañado.
 
-PRIVACIDAD Y SEGURIDAD
+SINTOMA OBSERVADO (OPCIONAL)
+----------------------------
+Describa lo que nota, por ejemplo "se reinicia al jugar". Si el analisis no
+encuentra anomalias pero usted reporta un sintoma, el programa insistira en
+ampliar el diagnostico en vez de dar el equipo por sano. El texto se trata
+como dato: nunca se ejecuta.
+
+
+MONITORIZACION (APARTADO 12)
+----------------------------
+Pulse Iniciar para muestrear cada segundo. Disco y red se dibujan con escalas
+independientes porque sus tasas difieren en ordenes de magnitud. Detener
+conserva lo capturado; Limpiar lo descarta. El buffer guarda 300 muestras.
+
+El muestreo no arranca solo: nada corre de fondo si usted no lo pide.
+
+
+EXPORTAR (APARTADO 15)
 ----------------------
-- La aplicación no utiliza base de datos ni envía información a Internet.
-- Los resultados viven en memoria hasta cerrar la aplicación.
-- El reporte se crea sólo cuando usted lo solicita.
-- El reporte puede contener nombre del equipo, IP, MAC e identificadores de
-  dispositivos. Revíselo antes de compartirlo.
-- La aplicación es de diagnóstico: no modifica ni instala controladores.
-- Algunas consultas pueden mostrar menos datos con una cuenta sin permisos.
+Primero se le pregunta si incluir el nombre del equipo y del usuario.
+Responda No para una copia anonima, apta para compartir.
 
-SOPORTE Y LOGS
---------------
-Los errores internos mínimos se escriben en:
-%LOCALAPPDATA%\AdministradorHardware\logs\app.log
+El formato se elige por la extension del archivo:
+  .html  lectura en navegador
+  .json  procesamiento automatico, con schema_version
+  .txt   lectura sin herramientas
 
-Esta herramienta ayuda a recopilar evidencia. Un estado normal no sustituye
-una inspección física o técnica cuando el problema persiste.
 
+DONDE QUEDAN SUS DATOS
+----------------------
+Todo es local: no hay telemetria ni servidor. Los reportes se escriben solo
+cuando usted los exporta. Los registros tecnicos estan en
+%LOCALAPPDATA%\AdministradorHardware\logs y no guardan IP, MAC ni usuario.
+
+
+SI ALGO FALLA
+-------------
+- "Error de consulta" en una seccion: ejecute como administrador y repita.
+- Aviso de SmartScreen: el ejecutable no esta firmado en esta version.
+- Graficos vacios: analice primero esa seccion.
+- El grafico de E/S no se mueve: no hay actividad; copie un archivo grande.
+
+Para reportar una incidencia, exporte el reporte en .txt y adjuntelo.
+
+
+DESINSTALAR
+-----------
+Cierre con la opcion 0, borre la carpeta y, si lo desea, la carpeta de
+registros en %LOCALAPPDATA%\AdministradorHardware. No quedan servicios ni
+entradas de registro.

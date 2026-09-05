@@ -1,6 +1,11 @@
 # Hardware Diagnostic & Repair Assistant — plan de producto
 
-Fecha: 2026-09-05. Estado: **FASES 1, 2, 3 Y 4 COMPLETADAS; fases 5, 6 y 7 sin implementar**.
+Fecha: 2026-09-05. Estado: **LAS SIETE FASES IMPLEMENTADAS.**
+Quedan dos verificaciones que exigen intervención humana y no pueden
+automatizarse: ejecutar el [protocolo de pruebas
+reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) con dispositivos físicos, y
+validar el ejecutable en un equipo limpio distinto del de desarrollo. Hasta
+entonces no se declara una versión validada en todos los equipos.
 Proyecto personal con evolución comercial. Se conserva la aplicación funcional y se amplía por fases.
 El desarrollo continúa cuando el usuario lo indique.
 
@@ -253,9 +258,9 @@ avanzar; no crear carpetas vacías masivamente.
 | 4B | Gráficos de CPU, RAM, discos y red — **COMPLETADA** | Medidor y barras por apartado; series numéricas con prefijo `_`; gates pytest/ruff/mypy en verde | Ocultar el panel y conservar la tabla |
 | 4C | diagnostics/recommendations — **COMPLETADA** | Causa, pasos, fundamento, comprobación y si modifica el sistema; en reporte y ficha; gates en verde | Mostrar sólo el problema posible |
 | 4D | Menú de 15 opciones y Salir — **COMPLETADA** | 16 entradas; Conectividad y Recomendaciones propias; ver ≠ exportar; cierre ordenado; gates en verde | Volver a la navegación de 12 |
-| 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
-| 6 | Documentación de producto | Guía de uso, límites, referencias, soporte y pruebas reales | Mantener documentación versionada |
-| 7 | packaging, distribución, README | EXE sin Python instalado, paquete verificable y recorrido completo | Última versión verificada |
+| 5 | reports JSON/TXT — **COMPLETADA** | schema_version 1.0, UTF-8, equipo/usuario omitibles, cobertura, límites y recomendaciones; gates en verde | HTML anterior intacto |
+| 6 | Documentación de producto — **COMPLETADA** (pruebas reales pendientes de ejecutar) | Guía de uso, notas de versión, límites, licencias, política de datos, soporte y protocolo PR-01…PR-18 | Documentación versionada |
+| 7 | packaging, distribución, README — **COMPLETADA** (validación en equipo limpio pendiente) | EXE de 21,8 MB con runtime propio, ZIP con LEEME/CHANGELOG/licencias y huella SHA-256 | Última versión verificada |
 
 ### Especificación técnica del apartado de gráficos (Fase 4)
 
@@ -300,11 +305,21 @@ produce `ConnectivityService` y los procedimientos de la 4C. «14. Generar
 reporte» **muestra** el reporte completo y «15. Exportar diagnóstico» lo
 **guarda**; son acciones distintas, como pide el enunciado.
 
-> **Pendiente de la fase 5:** la opción 15 exporta hoy el reporte HTML. Los
-> formatos JSON y TXT que pide el enunciado se añaden al mismo diálogo cuando se
-> implementen `json_report.py` y `txt_report.py`.
+**La fase 4 queda completa.**
 
-**La fase 4 queda completa.** Sigue la fase 5.
+La **fase 5** salda la deuda: la opción 15 exporta HTML, JSON y TXT según la
+extensión elegida en el diálogo. El JSON lleva `schema_version` para que una
+herramienta futura pueda leer exportaciones antiguas o avisar de
+incompatibilidad, sin migraciones ni base de datos.
+
+Antes de guardar se pregunta si incluir el nombre del equipo y del usuario;
+al responder «No» se escribe `(omitido)` en ambos y el resto del contenido es
+idéntico, conforme a la política de anonimizar las copias compartidas. Las
+series con prefijo `_` no se exportan: existen para dibujar.
+
+`errores_de_consulta` y `cobertura` van separados de `resultados`, porque una
+consulta que no se completó deja el componente sin evaluar y no debe leerse
+como ausencia de problemas.
 
 Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
 

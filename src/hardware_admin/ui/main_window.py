@@ -26,6 +26,8 @@ from hardware_admin.domain.models import (
     HealthStatus,
 )
 from hardware_admin.reports.html_report import export_html
+from hardware_admin.reports.json_report import export_json
+from hardware_admin.reports.txt_report import export_txt
 from hardware_admin.resources import resource_path
 from hardware_admin.services.monitoring_service import (
     MonitoringService,
@@ -1608,24 +1610,48 @@ class HardwareAdminApp(ctk.CTk):
         self.clipboard_append(text)
         self.progress_label.configure(text="Evidencia copiada al portapapeles")
 
+    def _write_report(self, destination: Path, include_identity: bool) -> Path:
+        """Escribe el reporte en el formato que indica la extensión elegida."""
+        assert self.report is not None
+        suffix = destination.suffix.lower()
+        if suffix == ".json":
+            return export_json(self.report, destination, include_identity)
+        if suffix == ".txt":
+            return export_txt(self.report, destination, include_identity)
+        return export_html(self.report, destination)
+
     def export_report(self) -> None:
         if self.report is None:
             messagebox.showinfo(
                 "Sin diagnóstico", "Primero debe analizar al menos una sección del equipo."
             )
             return
+        # El plan exige mostrar qué se incluye antes de guardar y permitir
+        # anonimizar la copia que se comparte.
+        include_identity = messagebox.askyesno(
+            "Datos del equipo",
+            "¿Incluir el nombre del equipo y del usuario en el reporte?"
+            f"{NL}{NL}Elija «No» para guardar una copia anónima, apta para compartir."
+            f"{NL}El resto del contenido es idéntico.",
+            parent=self,
+        )
         default_name = f"diagnostico-hardware-{datetime.now(UTC):%Y%m%d-%H%M}.html"
         destination = filedialog.asksaveasfilename(
             parent=self,
             title="Guardar reporte de diagnóstico",
             defaultextension=".html",
             initialfile=default_name,
-            filetypes=(("Reporte HTML", "*.html"), ("Todos los archivos", "*.*")),
+            filetypes=(
+                ("Reporte HTML", "*.html"),
+                ("Datos JSON", "*.json"),
+                ("Texto plano", "*.txt"),
+                ("Todos los archivos", "*.*"),
+            ),
         )
         if not destination:
             return
         try:
-            path = export_html(self.report, Path(destination))
+            path = self._write_report(Path(destination), include_identity)
         except OSError as exc:
             messagebox.showerror("No se pudo guardar", str(exc), parent=self)
             return
