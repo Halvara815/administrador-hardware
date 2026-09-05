@@ -64,10 +64,8 @@ recomendaciones y exportación.
 ### Pendiente
 
 Detallado por fases en el [trabajo pendiente](README.md#trabajo-pendiente).
+La fase 8 (validación del JSON de las consultas) ya está completada.
 
-- **Fase 8:** validación del JSON de las consultas; hoy una salida truncada o
-  precedida de una advertencia de PowerShell deja el componente en error de
-  consulta en lugar de manejarse limpiamente.
 - **Fase 9:** pruebas de timeout, de rechazo de consulta fuera de catálogo y
   registro de la exportación.
 - **Fase 10:** límite total de escaneo de 60 s, presupuesto de red de 30 s e
