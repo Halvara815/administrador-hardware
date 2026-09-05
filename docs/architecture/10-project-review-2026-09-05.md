@@ -12,12 +12,14 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **198 passed, 8 skipped, 29 subtests passed**;
+- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **199 passed, 8 skipped, 29 subtests passed**;
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 35 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256: `F358360FA8C0AB593D75E328980766317D5CCEA4776FFC289BF02937C38EB1DA`
-  - Fecha de compilación: `2026-09-05T17:15:28-06:00`
+  - SHA-256 (EXE): `f358360fa8c0ab593d75e328980766317d5ccea4776ffc289bf02937c38eb1da`
+  - Fecha de compilación (EXE): `2026-09-05T17:29:07-06:00`
+  - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
+  - SHA-256 (ZIP): `97cb8f9dcd1567ab85183bc184c8dedf81785058346c7157343a544db5e31e7d`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -72,7 +74,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 ## Inconclusos o discrepancias encontrados
 
 1. La advertencia de `.pytest_cache` fue corregida mediante la configuración explícita
-   de `cache_dir = ".pytest_cache"` en `pyproject.toml`, eliminando `PytestCacheWarning` / `WinError 183`.
+   de `cache_dir = ".cache/pytest"` en `pyproject.toml`, eliminando `PytestCacheWarning` / `WinError 183`.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
