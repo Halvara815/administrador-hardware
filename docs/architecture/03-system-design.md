@@ -1,9 +1,19 @@
 # Diseño del sistema
 
 > Este documento describe la base v0.1.0. La estructura objetivo, contratos,
-> límites, menú y fases del nuevo enunciado están en
-> [BUILD_PLAN.md](../../BUILD_PLAN.md). Su implementación no está iniciada.
+> límites, menú y fases del alcance del producto están en
+> [BUILD_PLAN.md](../../BUILD_PLAN.md). Fase 1 completada según el plan; resto pendiente.
 > Se conservará el monolito modular y la ausencia de base de datos.
+
+## Extensión planificada del asesor
+
+[09-diagnostic-advisor.md](09-diagnostic-advisor.md) define RAM ampliable,
+compatibilidad GPU, rendimiento contextual, guía por síntoma y comparación de reportes.
+Todos sus slices E1–E8 están pendientes, incluidos asesor SSD y prioridad de ampliación.
+Servicios coordinan inventario y fuentes;
+reglas puras validan evidencia; IA opcional explica; UI conserva la maqueta.
+La captura de rendimiento es un adaptador opcional, no un servicio obligatorio.
+No se incorporan DB, reparación automática ni nuevas dependencias en esta revisión.
 
 ## Decisión
 

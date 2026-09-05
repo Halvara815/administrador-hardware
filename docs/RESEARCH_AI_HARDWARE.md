@@ -3,7 +3,7 @@
 Fecha de consulta: 2026-09-04.
 Estado: investigación y diseño propuesto; no se instaló software, contrató API,
 envió inventario del equipo a terceros ni implementó integración.
-Complementa [BUILD_PLAN.md](../BUILD_PLAN.md); la rúbrica académica sigue siendo prioritaria.
+Complementa [BUILD_PLAN.md](../BUILD_PLAN.md); las capacidades verificables del producto guían su evolución.
 Método: documentación del fabricante y repositorios upstream. No se han ejecutado
 los proyectos candidatos ni medido comparativamente modelos de IA.
 
@@ -20,9 +20,17 @@ El asesor debe contestar:
 - Si existe una actualización aplicable y por qué conviene revisarla.
 - Qué especificación de RAM es compatible y qué productos la cumplen.
 - Qué dato falta antes de recomendar una compra o actualización.
+- Cuánta RAM admite el modelo exacto y qué módulos deben añadirse o sustituirse.
+- Si una GPU tiene compatibilidad verificada o faltan datos de alimentación/espacio.
+- Qué GPU concreta conviene entre candidatos verificados para uso/presupuesto,
+  o por qué cambiarla no resolvería la limitación observada (P23, E4–E5).
+- Qué limitación se observó durante una carga concreta, sin porcentaje universal.
+- Qué comprobación sigue y si hubo mejoría después de una acción del usuario.
 
 Su ubicación propuesta es la opción 13, Recomendaciones, con acciones
 “Explicar diagnóstico”, “Revisar controladores” y “Consultar ampliación de RAM”.
+Las tarjetas RAM/GPU y acciones de solución guiada, comparación y privacidad se
+especifican en [el diseño del asesor](architecture/09-diagnostic-advisor.md).
 La información básica y las reglas deterministas funcionan sin IA ni Internet.
 Las respuestas asistidas identifican modelo, fecha de consulta, evidencia y fuentes.
 
@@ -191,7 +199,7 @@ deriva de comprobaciones, no de un porcentaje inventado por el modelo.
 
 ## 7. Privacidad, límites y DB
 
-**El prototipo académico con IA opcional puede seguir SIN DB propia.**
+**El prototipo con IA opcional puede seguir SIN DB propia.**
 Contexto en memoria, reglas en archivos, documentos exportados por el usuario.
 Una API externa puede conservar datos según sus términos; “sin DB propia” no
 equivale a “ningún tercero conserva información”.
@@ -209,7 +217,7 @@ Permiso explícito antes de enviar el perfil: mostrar qué campos salen y a qué
 proveedor. Enviar modelo/SKU público, especificaciones, versiones e IDs de producto
 necesarios. Excluir usuario, hostname, IP, MAC, seriales, claves y rutas personales.
 Depurar IDs de instancia USB que puedan contener seriales; no enviar reporte bruto.
-El reporte académico local puede seguir incluyendo usuario/equipo por la rúbrica.
+Diseño previsto: el usuario podrá omitir identificadores personales en reportes compartidos.
 
 Contenido web y texto del usuario son datos no confiables. Un documento recuperado
 no puede cambiar instrucciones, activar herramientas ni solicitar credenciales.
@@ -233,8 +241,8 @@ Estado de todas las etapas: NO INICIADA.
 5. I5 — evaluación: matriz abajo, coste/latencia y pruebas en varios equipos.
    Solo tras aprobarla considerar un modo local o un segundo proveedor.
 
-Se integra tras tener contratos y recolectores académicos estables (fases 1–5);
-no bloquear la entrega de la rúbrica porque la API no esté disponible.
+Se integra tras tener contratos y recolectores estables (fases 1–5);
+el diagnóstico local debe funcionar aunque la API no esté disponible.
 
 Matriz mínima propuesta: 30 casos, 10 de RAM, 10 de drivers, 10 de
 incertidumbre/seguridad. Incluir:
@@ -269,6 +277,65 @@ Firmas/licencias de releases, condiciones de servicio y precios deben revisarse
 de nuevo al adoptar una dependencia. No hay benchmark que permita afirmar que un
 modelo es el más preciso para este proyecto.
 
-Las referencias enlazadas son fuentes de trabajo. Al elaborar Informe.pdf se
-completarán autor corporativo, fecha/título y formato APA 7; no atribuir al docente
-la ampliación de IA, que es una propuesta adicional solicitada por el usuario.
+Las referencias enlazadas sustentan decisiones de producto. Mantener título,
+organización, enlace y fecha de consulta; actualizar fuentes al adoptar una integración.
+
+## 10. Segunda investigación: ampliación y diagnóstico guiado
+
+Ampliación de requisitos posterior a esta investigación: P24–P28 y detalles de
+P16–P18 incorporan SSD, prioridad de compra, velocidad RAM, GPU por aplicación,
+verificación de ampliaciones y derivación a técnico. Es planificación solicitada,
+no una nueva investigación ni integración. Véanse E1–E8 en
+[el diseño del asesor](architecture/09-diagnostic-advisor.md).
+
+Consulta: 2026-09-04. Revisión documental de fuentes oficiales; no instalación,
+benchmark ni certificación de exclusividad. Las propuestas aprobadas para estructura
+se trazan a P14/P16–P22 y a E1–E6; permanecen sin implementar.
+
+### Comparación y oportunidad
+
+| Fuente oficial | Capacidad documentada | Consecuencia para el producto |
+|---|---|---|
+| [CPU-Z](https://www.cpuid.com/softwares/cpu-z.html) | Información de componentes, memoria y SPD | Mostrar inventario no es una función exclusiva |
+| [OCCT](https://www.ocbase.com/occt) | Estabilidad, monitorización y benchmarks | No competir inicialmente con una nueva suite de estrés |
+| [AIDA64 Engineer](https://www.aida64.com/products/aida64-engineer) | Información detallada, diagnóstico y benchmarks | No afirmar que las herramientas existentes solo muestran datos |
+| [Dell SupportAssist](https://www.dell.com/support/kbdoc/en-us/000221480/how-to-run-a-full-scan-of-your-dell-computer-for-optimizations-and-updates) | Análisis de hardware y actualizaciones | La guía de problemas también existe en ecosistemas OEM |
+| [Kingston Memory Finder](https://www.kingston.com/en/memory?memorytype=search) | Búsqueda de RAM compatible por sistema/especificación | Ampliación compatible no es exclusiva; sumar necesidad observada y explicación |
+
+Inferencia de producto: diferenciar por un recorrido integrado y comprensible en
+español, multicomponente, con evidencia, abstención y comprobación posterior.
+«¿Por qué?», «Antes de comprar», «¿Se solucionó?» y comparación depurada son
+prioridades propuestas, no afirmaciones de ausencia en todos los competidores.
+
+### Fundamento técnico y límites
+
+| Fuente | Hallazgo / aplicación prevista |
+|---|---|
+| [Microsoft Win32_PhysicalMemoryArray](https://learn.microsoft.com/en-us/windows/win32/cimwin32prov/win32-physicalmemoryarray) | MaxCapacityEx y MemoryDevices como datos reportados, separados del límite verificado |
+| [Dell: ampliar memoria](https://www.dell.com/support/kbdoc/en-us/000129299/how-to-upgrade-memory-in-your-computer) | Consultar especificaciones del equipo para configuraciones y máximo soportado |
+| [Intel: cuellos de botella](https://www.intel.com/content/www/us/en/gaming/resources/what-is-bottlenecking-my-pc.html) | Analizar equilibrio según carga; no equiparar limitación de rendimiento con incompatibilidad |
+| [NVIDIA: alimentación de tarjetas](https://www.nvidia.com/content/dam/en-zz/Solutions/design-visualization/workstation-power-guidelines.pdf) | Conectores/requisitos dependen de la tarjeta; exigir especificación exacta antes de recomendar |
+| [PresentMon upstream](https://github.com/GameTechDev/PresentMon) | Captura de tiempos de CPU/GPU/presentación, exportación CSV y telemetría; candidato opcional MIT con terceros a revisar |
+| [Microsoft: evento 41](https://learn.microsoft.com/en-us/troubleshoot/windows-client/performance/event-id-41-restart) | Reinicio inesperado no identifica por sí solo causa ni fuente defectuosa |
+| [Microsoft: problemas Wi-Fi](https://support.microsoft.com/en-us/windows/fix-wi-fi-connection-issues-in-windows-9424a1f7-6a3b-65a6-4d78-7f07eee84d2c) | Diagnóstico escalonado; diferenciar conectividad de problemas de aplicación |
+| [Microsoft: refresco](https://support.microsoft.com/en-us/windows/hardware/display-graphics/change-the-refresh-rate-on-your-monitor-in-windows) | Revisar modos disponibles de pantalla; no aplicar cambios automáticamente |
+
+PresentMon no se ha integrado ni probado en este proyecto. Revisar release, terceros,
+permisos, APIs gráficas, Windows, cancelación y sobrecarga antes de adoptarlo. No
+instalar servicios ni modificar grupos automáticamente para obtener métricas.
+La recomendación de GPU exige datos manuales si fuente, cableado o espacio no son
+detectables. La ampliación RAM exige configuración admitida, no solo restar capacidades.
+
+### Candidatos secundarios, fuera de E1–E6
+
+- Batería: capacidad de diseño frente a carga completa estimada, sin predecir fecha
+  de fallo. Ya contemplada en la hoja comercial diferida;
+  [API BatteryReport de Microsoft](https://learn.microsoft.com/en-us/windows/uwp/devices-sensors/get-battery-info).
+- USB: topología/velocidad del enlace para orientar revisión de puerto, hub o cable;
+  no atribuir automáticamente la causa al cable. Referencias:
+  [USBView](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/usbview) y
+  [muestra oficial](https://github.com/microsoft/Windows-driver-samples/blob/main/usb/usbview/README.md).
+
+No añadir estos candidatos al compromiso de implementación sin estimar cobertura,
+permisos y validación. Las referencias técnicas no conceden autorización para
+redistribuir binarios ni acceso automatizado universal a catálogos de fabricantes.

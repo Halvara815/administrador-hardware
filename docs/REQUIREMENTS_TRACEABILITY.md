@@ -1,8 +1,7 @@
 # Trazabilidad de requisitos
 
-> Evidencia histórica del enunciado anterior. Para los 46 apartados nuevos y la
-> rúbrica de 25 puntos consultar [ASSIGNMENT_TRACEABILITY.md](ASSIGNMENT_TRACEABILITY.md).
-> Los resultados siguientes no certifican cumplimiento de los nuevos requisitos.
+> Evidencia histórica de la base funcional. Consultar
+> [PRODUCT_REQUIREMENTS.md](PRODUCT_REQUIREMENTS.md) para las ampliaciones pendientes.
 
 Fecha de verificación: 2026-09-04
 

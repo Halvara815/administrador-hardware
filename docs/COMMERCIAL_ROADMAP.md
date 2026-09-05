@@ -1,14 +1,21 @@
 # Archivo de la hoja de ruta comercial
 
-Estado: DIFERIDA. El plan académico vigente está en [BUILD_PLAN.md](../BUILD_PLAN.md).
+Estado: DIFERIDA. El plan de producto vigente está en [BUILD_PLAN.md](../BUILD_PLAN.md).
 Las suscripciones solo se discutieron; no hay decisión de implementar pagos ni cuentas.
 Las estimaciones siguientes son preliminares, no compromisos ni evidencia de trabajo terminado.
+
+La ampliación RAM/GPU y la solución guiada tienen planificación vigente en
+[09-diagnostic-advisor.md](architecture/09-diagnostic-advisor.md), slices E1–E8,
+todos pendientes. Esa planificación prevalece sobre estimaciones históricas de
+este archivo para esas funciones; no cambia el estado de las fases base ni
+autoriza implementación. IA remota opcional con consentimiento no equivale a
+cuentas/nube obligatoria. El núcleo y estas ampliaciones siguen sin DB propia.
 
 # Plan de evolución: Administrador de Hardware comercial
 
 ## Estado y propósito
 
-- Producto actual: `v0.1.0`, funcional y verificado para entrega académica en Windows.
+- Producto actual: `v0.1.0`, funcional y verificado para entrega inicial en Windows.
 - Objetivo futuro: `v1.0.0`, herramienta local de diagnóstico confiable para usuarios y técnicos.
 - Estado de la evolución comercial: **PLANIFICADA — NO INICIADA**.
 - Restricción principal: preservar el comportamiento que ya funciona.
@@ -92,12 +99,12 @@ Pasos:
 1. Actualizar la evidencia de pruebas y la trazabilidad real.
 2. Ejecutar pruebas, lint, tipado, auditoría de dependencias y build limpio.
 3. Verificar arranque y análisis completo desde el ejecutable.
-4. Crear el tag `v0.1.0-academic` y conservar su hash SHA-256.
+4. Crear el tag `v0.1.0-baseline` y conservar su hash SHA-256.
 5. Definir fixtures de resultados actuales para detectar regresiones.
 
 Criterio de aceptación: la línea base puede restaurarse y produce el mismo resultado funcional.
 
-Rollback: volver al tag académico; no modificar reportes creados por el usuario.
+Rollback: volver al tag inicial; no modificar reportes creados por el usuario.
 
 Estimación: 1–2 horas.
 
@@ -380,7 +387,7 @@ de verificación, documentación actualizada y un commit recuperable.
 
 La versión se considerará comercialmente confiable cuando:
 
-- La línea base académica siga funcionando sin regresiones.
+- La línea base inicial siga funcionando sin regresiones.
 - Las mediciones soportadas tengan fuente, unidad, tiempo y calidad identificables.
 - Las conclusiones distingan hechos, causas probables y limitaciones.
 - Los fallos parciales y hardware no compatible estén claramente representados.

@@ -1,86 +1,82 @@
-# Administrador de Hardware
+# Hardware Diagnostic & Repair Assistant
 
-> Nueva etapa planificada: **Hardware Diagnostic & Repair Assistant**.
-> El [plan vigente](BUILD_PLAN.md) y la
-> [trazabilidad del nuevo enunciado](docs/ASSIGNMENT_TRACEABILITY.md) describen
-> los cambios pendientes. Esta reestructuración es documental; las funciones
-> enumeradas debajo corresponden a la versión actual. Se mantiene **sin DB**.
-> La [hoja de ruta comercial](docs/COMMERCIAL_ROADMAP.md) queda diferida.
+Proyecto personal de diagnóstico de hardware para Windows, orientado a usuarios
+y técnicos. Recopila información real, presenta evidencia comprensible y ayuda
+a investigar posibles problemas. Su evolución comercial se desarrolla por fases.
 
-La [investigación de IA y compatibilidad](docs/RESEARCH_AI_HARDWARE.md) reúne
-repositorios, fuentes y el diseño futuro de recomendaciones de controladores/RAM.
-Esta función todavía no está implementada.
+La aplicación actual funciona localmente y **no utiliza base de datos**.
+Las funciones de IA, recomendación de compras y actualización asistida de
+controladores están en investigación; todavía no están integradas.
 
-Aplicación de escritorio para Windows que recopila información real del equipo,
-presenta evidencia técnica similar a una terminal y genera un diagnóstico
-justificado. El proyecto no utiliza base de datos ni servicios externos.
+![Interfaz](docs/ui-live.png)
 
-![Interfaz ejecutada](docs/ui-live.png)
+## Funciones disponibles
 
-## Alcance funcional
+- Información del sistema, CPU, RAM, almacenamiento y red.
+- Dispositivos USB y PCI/PCIe, controladores y monitor/GPU.
+- Detección de estados problemáticos y análisis por sección.
+- Matriz de resultados, conclusiones y consola de evidencia de solo lectura.
+- Muestra de actividad de E/S y exportación HTML.
 
-1. Información del sistema
-2. CPU
-3. Memoria
-4. Discos
-5. Red
-6. USB
-7. PCI/PCIe
-8. Controladores
-9. Dispositivos con problemas
-10. Monitor y GPU
-11. Monitorización de E/S
-12. Generación de reporte
+Consultar el [plan de desarrollo](BUILD_PLAN.md) para el estado de cada fase.
+Las capturas y el paquete existente pueden corresponder a una revisión anterior
+al código fuente; cada distribución debe identificar su versión y pruebas.
 
-## Uso de la aplicación terminada
+## Ejecutar
 
-El ejecutable se encuentra en:
+Extraer la carpeta completa del paquete y abrir:
 
 ```text
 dist/AdministradorDeHardware/AdministradorDeHardware.exe
 ```
 
-La carpeta completa `AdministradorDeHardware` debe conservarse junta. Abra el
-`.exe`, pulse **ANALIZAR EQUIPO**, seleccione cualquier componente y use la opción
-12 para exportar el reporte HTML.
+Conservar las dependencias junto al ejecutable. Pulsar **ANALIZAR EQUIPO**,
+seleccionar un componente y utilizar la opción de reporte para exportar HTML.
+No hace falta instalar Python para usar la distribución empaquetada.
 
-También se genera un ZIP listo para copiar o entregar en `release/`.
+## Desarrollo
 
-## Desarrollo y reconstrucción
+Se requiere Windows y un Python compatible con pyproject.toml.
+Ejecutar run.cmd para desarrollo o build.cmd para reconstruir.
+El build instala requirements.lock, ejecuta pruebas, lint y tipado y genera
+el ejecutable con PyInstaller. Los paquetes quedan en release/.
 
-En Windows, ejecute `build.cmd`. El proceso crea el entorno virtual cuando hace
-falta, instala las versiones de `requirements.lock`, ejecuta pruebas, lint y
-tipado, y sólo entonces construye el `.exe`.
+Bibliotecas principales: CustomTkinter para la interfaz, psutil para métricas
+y Pillow para recursos visuales. Las consultas Windows usan subprocess y
+PowerShell. Las versiones están registradas en requirements.lock.
 
-Para abrir la versión de desarrollo sin consola puede usar `run.cmd`.
+## Arquitectura y documentación
 
-## Arquitectura
+- [Plan por fases](BUILD_PLAN.md): alcance, gráficos, casos y aceptación.
+- [Requisitos del producto](docs/PRODUCT_REQUIREMENTS.md): capacidades y pruebas previstas.
+- [Arquitectura](docs/architecture/03-system-design.md): responsabilidades y contratos.
+- [Investigación de IA y hardware](docs/RESEARCH_AI_HARDWARE.md): fuentes y compatibilidad.
+- [Diseño del asesor](docs/architecture/09-diagnostic-advisor.md): ampliación de RAM,
+  compatibilidad y rendimiento GPU, solución guiada y comparación; pendiente de implementar.
+- [Evolución comercial](docs/COMMERCIAL_ROADMAP.md): distribución, soporte y validación.
+- [Verificación histórica](docs/architecture/08-production-readiness.md): evidencia con alcance limitado.
 
-Se utiliza un monolito modular con cuatro responsabilidades separadas:
+## Datos y límites
 
-- `collectors`: obtiene evidencia desde `psutil` y consultas permitidas de Windows.
-- `diagnostics`: convierte métricas y estados en hallazgos explicables.
-- `services`: coordina un análisis completo sin bloquear la interfaz.
-- `ui`: presenta navegación, matriz, conclusión y evidencia técnica de solo lectura.
+Las consultas son de solo lectura y pertenecen a un catálogo cerrado.
+Un fallo parcial conserva resultados válidos; un estado OK no descarta todos
+los problemas físicos. La aplicación no instala drivers ni repara automáticamente.
 
-Los modelos compartidos viven en `domain`. La interacción con PowerShell y el
-sistema operativo queda aislada en `infrastructure`.
+Los resultados permanecen en memoria y los reportes se guardan a petición del
+usuario; pueden incluir datos del equipo. Revisarlos antes de compartirlos.
+Existen logs técnicos locales para investigar fallos. La compatibilidad depende
+de Windows, los permisos y la información que exponga cada fabricante.
 
-Consulta [BUILD_PLAN.md](BUILD_PLAN.md) y [docs/architecture](docs/architecture)
-antes de comenzar la implementación.
+La IA futura será opcional. El diseño contempla consentimiento para consultas
+remotas y fuentes verificables para recomendaciones. La gestión de cuentas,
+pagos o cuotas comerciales requerirá una decisión independiente.
 
-## Seguridad y datos
+## Distribución y soporte
 
-- Las consultas PowerShell pertenecen a una lista cerrada.
-- No se aceptan comandos escritos por el usuario.
-- Los recolectores son de sólo lectura y tienen timeout.
-- Un fallo parcial no elimina los resultados obtenidos.
-- El estado vive en memoria; sólo se escribe un reporte por petición explícita.
-- Los logs no guardan la evidencia cruda completa.
+El repositorio contiene código, pruebas y documentación de desarrollo.
+Los paquetes para usuarios incluirán ejecutable, dependencias, guía de uso,
+notas de versión y avisos de terceros. No se declara todavía una versión
+comercial validada en todos los equipos.
 
-## Verificación
-
-El pipeline local incluye `pytest`, `ruff`, `mypy`, smoke test de interfaz,
-diagnóstico real, render del reporte y smoke test del artefacto PyInstaller.
-Consulta [la revisión de entrega](docs/architecture/08-production-readiness.md)
-para ver el estado de cada gate.
+Para reportar problemas, incluir versión, Windows, pasos de reproducción y
+mensaje de error; evitar adjuntar seriales, claves o reportes personales completos.

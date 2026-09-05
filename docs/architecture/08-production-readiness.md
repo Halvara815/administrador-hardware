@@ -2,14 +2,14 @@
 
 - Fecha: 2026-09-04
 - Owner: equipo del proyecto
-- Resultado: **LISTO PARA ENTREGA ACADÉMICA EN WINDOWS**
+- Resultado: **LISTO PARA ENTREGA INICIAL EN WINDOWS**
 - Alcance: aplicación local, de un usuario, sin base de datos ni servicios externos.
 
 | Área | Gate | Estado | Evidencia / razón |
 |---|---|---|---|
-| Producto | Doce opciones del enunciado | PASS | `NAV_ITEMS`, recolectores y trazabilidad |
+| Producto | Doce opciones del producto | PASS | `NAV_ITEMS`, recolectores y trazabilidad |
 | Producto | Matriz, conclusión y evidencia técnica | PASS | Smoke test y capturas a dos resoluciones |
-| Producto | Caso final del ingeniero | PASS | Test CPU 95 %, RAM 92 %, USB y GPU con error |
+| Producto | Caso de carga y dispositivos con error | PASS | Test CPU 95 %, RAM 92 %, USB y GPU con error |
 | Reliability | Fallo parcial no cancela el análisis | PASS | `test_scan_service.py` |
 | Reliability | UI no bloqueada | PASS | Recolectores en `ThreadPoolExecutor` y captura tras flujo real |
 | Capacidad | Tiempo de análisis razonable | PASS | 5.49 s desde Python y 8.11 s desde `.exe` final en esta máquina |
@@ -25,7 +25,7 @@
 | Observabilidad | Logs de fallos y duración | PASS | Log rotativo en `%LOCALAPPDATA%\AdministradorHardware\logs` |
 | Operación | Dashboards, on-call y alertas | N/A | No existe servicio ni operación continua |
 | Costos | Infraestructura y terceros | N/A | Ejecución local sin nube ni API externa |
-| Distribución | Firma de código | N/A | No fue requisito académico; sería necesaria para distribución pública |
+| Distribución | Firma de código | N/A | No fue requisito de la versión inicial; sería necesaria para distribución pública |
 | Compatibilidad | Segunda máquina Windows limpia | NO VERIFICADO | Recomendado si se evaluará en hardware distinto |
 
 ## Evidencia final
@@ -41,6 +41,6 @@
 
 ## Riesgos residuales
 
-- Windows puede mostrar SmartScreen porque el ejecutable académico no está firmado.
+- Windows puede mostrar SmartScreen porque el ejecutable inicial no está firmado.
 - Los datos disponibles dependen de permisos, drivers y proveedores del equipo.
 - Un diagnóstico por software no sustituye inspección física si el problema persiste.

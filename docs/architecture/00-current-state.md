@@ -3,7 +3,7 @@
 ## Evidencia observada
 
 - La carpeta del proyecto estaba vacía al iniciar la estructuración.
-- El enunciado exige una aplicación Python que inspeccione hardware real en Windows.
+- El producto requiere una aplicación Python que inspeccione hardware real en Windows.
 - La interfaz acordada es una sola ventana con navegación lateral, diagnóstico,
   matriz de hallazgos y panel de evidencia técnica.
 - El usuario confirmó que no habrá base de datos.
@@ -22,4 +22,3 @@ matriz y conclusión → interfaz → exportación opcional de reporte.
 - La salida de PowerShell debe tratarse como dato no confiable y normalizarse.
 - El ejecutable debe construirse y validarse en Windows; PyInstaller no es un
   compilador cruzado.
-

@@ -11,7 +11,7 @@ entregarse como programa gráfico. El usuario confirmó que no habrá base de da
 
 ## Drivers
 
-- Facilidad de desarrollo y evaluación académica.
+- Facilidad de desarrollo y validación del producto.
 - Acceso directo y controlado a APIs locales de Windows.
 - Ejecución sin servidor ni conexión a Internet.
 - Distribución simple y decisiones reversibles.
@@ -48,4 +48,3 @@ archivo cuando el usuario lo solicita.
 
 Reconsiderar persistencia o separación cliente-servidor únicamente si aparece un
 requisito confirmado de historial consultable, múltiples equipos o usuarios.
-

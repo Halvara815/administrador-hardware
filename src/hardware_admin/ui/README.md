@@ -12,3 +12,11 @@ La ventana se dividirá en:
 La UI nunca ejecutará PowerShell directamente. Iniciará `ScanService` en un
 trabajador y aplicará los resultados desde el hilo principal de la interfaz.
 
+
+## Evolución visual prevista
+
+Conservar navegación lateral, matriz y evidencia. El plan prevé ampliar a quince
+opciones y Salir, con gráficos por componente y monitorización acotada.
+Los gráficos se renderizarán en la UI con Canvas/CustomTkinter y consumirán datos
+normalizados; no deben ejecutar consultas Windows ni presentar mediciones ausentes
+como cero. La IA futura se integrará en recomendaciones con fuentes visibles.

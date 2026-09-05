@@ -1,14 +1,25 @@
-# Hardware Diagnostic & Repair Assistant — plan del nuevo enunciado
+# Hardware Diagnostic & Repair Assistant — plan de producto
 
-Fecha: 2026-09-04. Estado: **FASE 1 COMPLETADA; resto del plan sin implementar**.
-Fuente: enunciado del docente, secciones 1–46, adjuntado por el usuario.
-Este plan sustituye la prioridad comercial anterior. La app v0.1.0 permanece funcional.
+Fecha: 2026-09-04. Estado: **FASES 1, 2 Y 3 COMPLETADAS; resto del plan sin implementar**.
+Proyecto personal con evolución comercial. Se conserva la aplicación funcional y se amplía por fases.
 El desarrollo continúa cuando el usuario lo indique.
 
 Investigación adicional solicitada: [fuentes técnicas y asesor de IA](docs/RESEARCH_AI_HARDWARE.md).
-Propone recomendaciones verificables de drivers y RAM con referencias oficiales.
+Propone recomendaciones verificables de drivers, ampliación RAM, compatibilidad GPU,
+rendimiento por sesión y solución guiada con referencias oficiales.
 Estado: diseño, no implementación; IA opcional y sin DB propia para el prototipo.
-La ampliación no reemplaza las reglas ni la rúbrica académica.
+La IA complementa las reglas verificables del producto.
+
+La [ampliación del asesor](docs/architecture/09-diagnostic-advisor.md) define los
+slices E1–E8, todos NO INICIADOS, sus contratos, módulos, pruebas y recuperación.
+Incluye «¿Por qué?», «Antes de comprar», «¿Se solucionó?», comparación de reportes,
+exportación depurada y revisión de refresco. Mantiene maqueta, menú y ausencia de DB.
+P23 incorpora candidatos concretos de GPU en E4–E5, ajustados a uso y presupuesto,
+con SKU/fuentes y alternativa de no comprar cuando el diagnóstico no lo justifique.
+No se garantiza eliminar todos los cuellos de botella ni se fija una GPU por defecto.
+P24–P28 añaden prioridad de ampliaciones, asesor SSD, revisión de velocidad RAM,
+GPU por aplicación y criterios para acudir a un técnico. P16–P18 se amplían, sin
+duplicarse, con cambios recientes, ficha de compra y verificación de la ampliación.
 
 ## Decisiones y fundamento
 
@@ -22,26 +33,26 @@ La ampliación no reemplaza las reglas ni la rúbrica académica.
   Logs técnicos rotativos existentes, sin evidencia cruda ni datos personales completos.
 - “Repair Assistant” significa proponer procedimientos correctivos, no reparar
   automáticamente. No se ejecutarán release/renew, limpieza DNS o cambios de drivers.
-- La implementación recomendada por el docente es una guía de responsabilidades.
+- La estructura separa responsabilidades de medición, análisis y presentación.
   Mantener el paquete actual evita renombrados masivos y rotura de importaciones.
 - Suscripciones, activación, nube, sensores avanzados, pruebas de estrés y firma
   comercial quedan en [la hoja de ruta diferida](docs/COMMERCIAL_ROADMAP.md).
-  El enunciado pide recomendar investigación térmica; no exige implementarla.
+  La consulta de sensores se incorporará cuando tenga compatibilidad y pruebas suficientes.
 
 Alternativas descartadas: un archivo único mezcla UI y comandos; cliente-servidor
 con DB agrega operación sin requisito; rehacer las carpetas literalmente no mejora
-la evaluación. Elegimos extender los módulos existentes con contratos compatibles.
+la mantenibilidad. Elegimos extender los módulos existentes con contratos compatibles.
 
 ## Estado observado y brechas
 
-La evidencia histórica no certifica el nuevo enunciado. Los 18 tests aprobados en
-la última construcción no cubren todavía las nuevas reglas ni los cinco casos.
+La tabla identifica capacidades de base y ampliaciones. El estado de fases debe
+contrastarse con las pruebas del commit que vaya a distribuirse.
 
 | Área | Base disponible | Trabajo pendiente |
 |---|---|---|
 | Interfaz | 12 opciones, análisis general/sección, consola | 15 opciones, Salir, síntoma y recomendaciones |
-| CPU | Modelo, núcleos, uso; umbrales 85/95 | Aplicar clasificación docente y probar bordes |
-| RAM | Total/disponible/uso; umbrales 80/95 | Aplicar 70/90 |
+| CPU | Modelo, núcleos y clasificación de Fase 1 | Mantener pruebas de bordes y regresión |
+| RAM | Total/disponible/uso y clasificación de Fase 1 | Mantener umbrales 70/90 y casos de regresión |
 | Discos | psutil y Get-Disk | Get-PhysicalDisk/Get-Volume, asociaciones, tipo y recomendaciones |
 | Red | MAC, IPv4, estado, velocidad | IPv6, gateway, DNS, APIPA y pruebas escalonadas |
 | PnP | USB/PCI presentes e ID | Relación dispositivo-driver-volumen y diagnóstico localizado |
@@ -49,7 +60,7 @@ la última construcción no cubren todavía las nuevas reglas ni los cinco casos
 | Motor | Reglas básicas y conclusión | Recomendaciones estructuradas y cinco casos integradores |
 | Monitorización | Muestra breve de E/S | Muestreo periódico acotado, detener y datos con fecha |
 | Reportes | HTML | JSON obligatorio elegido; TXT adicional, equipo/usuario/recomendaciones |
-| Entrega | EXE y ZIP de distribución | ZIP académico con fuente, PDF APA 7, evidencias y requirements.txt |
+| Distribución | EXE y ZIP | Manual de usuario, notas de versión, licencias de terceros y validación en equipo limpio |
 
 ## Estructura objetivo, no creada todavía
 
@@ -71,7 +82,7 @@ src/hardware_admin/
     commands.py                   [nuevo] CMD/herramientas con argumentos cerrados
   diagnostics/
     engine.py                     conclusión global y alcance
-    rules.py                      [nuevo] clasificación central comprobable
+    rules.py                      existente; clasificación central comprobable
     recommendations.py            [nuevo] causa, pasos y fundamento
   services/
     scan_service.py                un diagnóstico activo, progreso, errores
@@ -79,23 +90,27 @@ src/hardware_admin/
     monitoring_service.py         [nuevo] muestras acotadas y parada
   reports/
     html_report.py                conservar
-    json_report.py, txt_report.py [nuevos] exportaciones del enunciado
+    json_report.py, txt_report.py [nuevos] exportaciones del producto
   ui/
     main_window.py                 maqueta existente ampliada
     theme.py, icons.py             conservar estilo
 docs/
   architecture/                   decisiones y contratos
   REQUIREMENTS_TRACEABILITY.md    evidencia histórica y enlace al nuevo alcance
-  ASSIGNMENT_TRACEABILITY.md      requisitos 1–46 y aceptación futura
+  PRODUCT_REQUIREMENTS.md      requisitos funcionales y aceptación
   research/                       [futuro] fichas bibliográficas y marco conceptual
   evidence/                       [futuro] pruebas reales consentidas
-  Informe.md                      [futuro] fuente del informe APA 7
+  USER_GUIDE.md                    [futuro] guía de uso y solución de problemas
 tests/                            bordes, casos integradores, comandos y exportaciones
 scripts/                          build y futuro ensamblador de entrega
 ```
 
-Mapeo al docente: diagnostico → collectors; sistema → infrastructure;
-analisis → diagnostics; reportes → reports. No es necesario introducir herencia:
+Los módulos adicionales de asesoría están especificados en
+[09-diagnostic-advisor.md](docs/architecture/09-diagnostic-advisor.md).
+Se crearán únicamente al implementar el slice correspondiente, no en esta revisión.
+
+Responsabilidades: medición → collectors; Windows → infrastructure;
+reglas → diagnostics; exportación → reports. No es necesario introducir herencia:
 protocolos y composición actuales permiten probar recolectores aislados.
 
 Dependencias: UI → servicios/dominio; servicios → recolectores/motor/reportes;
@@ -153,32 +168,32 @@ Mostrar si un catálogo está limitado: hoy hay consultas con límites 100/150.
 ## Reglas y casos obligatorios
 
 CPU: NORMAL <=70; ADVERTENCIA >70 y <90; CRÍTICO >=90.
-El docente escribe 0–70, 71–89 y 90–100 para enteros; la regla continua >70
-cubre los decimales sin huecos. Documentar esta interpretación en el informe.
+La regla continua cubre valores decimales sin huecos; es una política de
+clasificación de carga y no una prueba de daño físico.
 RAM: NORMAL <70; ADVERTENCIA >=70 y <90; CRÍTICO >=90.
 Disco: conservar provisionalmente 85/95, política del proyecto; 96 % debe ser CRÍTICO.
 No diagnosticar daño físico basándose únicamente en porcentajes de utilización.
 
 | Caso | Entrada | Salida y prueba de aceptación |
 |---|---|---|
-| CPU individual (§18) | CPU98/RAM52/disco30 | Carga CPU alta; revisar procesos |
-| RAM individual (§20) | CPU30/RAM95/disco20 | Memoria alta; procesos, inicio y ampliación si recurrente |
-| Disco (§16) | C:96 % | Espacio insuficiente; liberar espacio de forma guiada |
-| DNS (§12) | Adaptador/IP/gateway/IP externa OK, DNS falla | Posible DNS; verificar configuración, sugerir limpieza sin ejecutarla |
-| C1 (§31) | 169.254.x.x, sin gateway, ping falla | Posible DHCP/red local; sugerir ipconfig /all, /release y /renew |
-| C2 (§32) | NIC PCIe error; resto OK | Problema localizado; ID, driver, administrador, conexión, actualización si procede, reinicio y repetir |
-| C3 (§33) | Controlador USB OK; memoria error; driver problema; sin disco | Detección/configuración/driver del periférico, no condenar todo el bus |
-| C4 (§34) | CPU97/RAM91/disco12; resto normal | Recursos elevados; revisar procesos, aplicaciones, servicios, inicio y memoria |
-| C5 (§35) | Todo OK, reinicio al jugar | Sin anomalías básicas; investigar temperatura, fuente, GPU, drivers, eventos, RAM y hardware |
+| CPU individual | CPU98/RAM52/disco30 | Carga CPU alta; revisar procesos |
+| RAM individual | CPU30/RAM95/disco20 | Memoria alta; procesos, inicio y ampliación si recurrente |
+| Disco | C:96 % | Espacio insuficiente; liberar espacio de forma guiada |
+| DNS | Adaptador/IP/gateway/IP externa OK, DNS falla | Posible DNS; verificar configuración, sugerir limpieza sin ejecutarla |
+| C1 | 169.254.x.x, sin gateway, ping falla | Posible DHCP/red local; sugerir ipconfig /all, /release y /renew |
+| C2 | NIC PCIe error; resto OK | Problema localizado; ID, driver, administrador, conexión, actualización si procede, reinicio y repetir |
+| C3 | Controlador USB OK; memoria error; driver problema; sin disco | Detección/configuración/driver del periférico, no condenar todo el bus |
+| C4 | CPU97/RAM91/disco12; resto normal | Recursos elevados; revisar procesos, aplicaciones, servicios, inicio y memoria |
+| C5 | Todo OK, reinicio al jugar | Sin anomalías básicas; investigar temperatura, fuente, GPU, drivers, eventos, RAM y hardware |
 
-Añadir casos USB ausente, USB presente con error y USB OK sin volumen (§14).
-Para GPU con síntomas y estado OK (§22), incluir también aplicación, DirectX
+Añadir casos USB ausente, USB presente con error y USB OK sin volumen.
+Para GPU con síntomas y estado OK, incluir también aplicación, DirectX
 y conexiones. Memoria reportada por WMI no se presenta como VRAM exacta garantizada.
 Estado Unknown requiere investigación; no prueba daño. Guardar el estado original.
 
 ## Interacción con Windows y controles
 
-Demostrar tres rutas con evidencia en el informe:
+Usar las rutas apropiadas y documentar sus límites:
 
 1. Python → psutil para CPU, RAM, red y E/S.
 2. Python → PowerShell con catálogo cerrado y JSON.
@@ -191,7 +206,7 @@ Get-Volume y VideoProcessor. Consultar identidad de controlador por ID del dispo
 CMD solo recibirá el literal aprobado; ningún síntoma o texto libre se interpolará.
 Validar IP de gateway y destino; no incluir operadores de shell.
 
-Ping 8.8.8.8, nslookup google.com y arp -a cumplen los ejemplos del docente.
+Ping 8.8.8.8, nslookup google.com y arp -a son consultas de referencia para el diagnóstico.
 Registrar interfaz/ruta seleccionada, pues VPN o loopback no demuestran Internet.
 Un ping sin respuesta puede reflejar ICMP bloqueado: resultado no concluyente
 sin pruebas complementarias. ARP solo muestra vecinos conocidos, no todos los equipos.
@@ -213,26 +228,26 @@ UI confirma la acción en menos de 250 ms en el equipo de referencia.
 No añadir estrés activo para cumplir “monitorización”.
 
 Registrar ID de sesión, consulta, duración y resultado; no guardar usuario/IP/MAC
-en logs ordinarios. Exportación incluye equipo y usuario por requisito docente:
-advertirlo y anonimizar copias compartidas como evidencias. No habrá telemetría remota.
+en logs ordinarios. Diseño de exportación: permitir omitir equipo y usuario;
+mostrar los campos incluidos antes de guardar y anonimizar las copias compartidas. No habrá telemetría remota.
 Recuperación: reiniciar app y repetir análisis; los reportes exportados no se borran.
 
 ## Fases ejecutables
 
-La Fase 1 está completada; las demás están **NO INICIADAS**. Cada fase debe
+Las Fases 1, 2 y 3 están completadas; las demás están **NO INICIADAS**. Cada fase debe
 completar medición → regla → UI → reporte → prueba correspondiente antes de
 avanzar; no crear carpetas vacías masivamente.
 
 | Fase | Cambio y módulos | Pruebas/aceptación | Recuperación |
 |---|---|---|---|
-| 0 | Baseline, rama, fixtures; docs/tests | Capturar versión, ejecutar gates actuales y guardar artefacto/hash | Recuperar commit y ZIP académico |
+| 0 | Baseline, rama, fixtures; docs/tests | Capturar versión, ejecutar gates actuales y guardar artefacto/hash | Recuperar commit y ZIP inicial |
 | 1 | domain, rules, engine, UI — **COMPLETADA** | Umbrales decimales/bordes; ERROR distinto de CRÍTICO; síntoma y C5 — gates pytest/ruff/mypy en verde | Campos nuevos opcionales; revertir slice |
-| 2 | commands, network, connectivity, UI | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada | Omitir pruebas externas y conservar datos locales |
-| 3 | pnp, drivers, storage, gpu | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma | Conservar core.py hasta paridad |
+| 2 | commands, network, connectivity, UI — **COMPLETADA** | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada — gates pytest/ruff/mypy en verde | Omitir pruebas externas y conservar datos locales |
+| 3 | pnp, drivers, storage, gpu — **COMPLETADA** | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma — gates pytest/ruff/mypy en verde | Conservar core.py hasta paridad |
 | 4 | monitoring, charts por apartados, recommendations, UI | Gráficos visuales integrados en apartados (CPU, RAM, Discos, Red, E/S); buffer/parada; 15 opciones+Salir | Cancelar tareas y volver a última UI estable |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
-| 6 | docs/research, Informe.md | >=5 fichas, marco conceptual, APA 7, >=5 pruebas reales | Mantener borradores y evidencia versionados |
-| 7 | packaging, entrega, README | EXE sin Python instalado, ZIP exacto y demostración completa | Última entrega verificada; no publicar fallos |
+| 6 | Documentación de producto | Guía de uso, límites, referencias, soporte y pruebas reales | Mantener documentación versionada |
+| 7 | packaging, distribución, README | EXE sin Python instalado, paquete verificable y recorrido completo | Última versión verificada |
 
 ### Especificación técnica del apartado de gráficos (Fase 4)
 
@@ -256,76 +271,57 @@ Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como p
 
 Cada fase registrará fallos y duración de pruebas. Sin migraciones de DB;
 schema_version permitirá leer exportaciones antiguas o avisar incompatibilidad.
-No imponer un plazo comercial al trabajo académico: recalcular tras la Fase 0
-según acceso a equipos, integrantes y fecha de entrega.
+Reestimar fechas según acceso a equipos, alcance y resultados de pruebas.
 
-## Investigación y documentación del docente
+## Documentación del producto
 
-Documento futuro Informe.pdf (no generado en esta etapa): portada con integrantes,
-introducción, problema, objetivos, marco conceptual, bibliotecas, arquitectura,
-menú, desarrollo, casos, pruebas, resultados, dificultades/soluciones,
-conclusiones y referencias APA 7. No inventar resultados ni datos de estudiantes.
+Después de estabilizar las dependencias base, seguir E1 (guía), E2 (RAM), E3
+(comparación/privacidad), E4 (compatibilidad GPU), E5 (rendimiento) y E6 (refresco).
+E7 añade SSD tras fase 3/E2; E8 integra prioridades y fichas tras E2–E5/E7.
+La IA I1–I5 complementa estos recorridos: E1 y E3 no dependen de una API; E2/E4
+deben poder abstenerse y explicar reglas sin IA. No se promete compatibilidad por
+nombre comercial ni porcentajes universales de cuello de botella.
 
-Marco conceptual obligatorio: buses, PCI/PCIe y lanes, USB, E/S, DMA,
-interrupciones, drivers, periféricos, x86, PnP/enumeración/recursos;
-SATA/NVMe/USB y HDD/SSD. Distinguir bus de transporte y tipo de medio.
+Mantener una guía de instalación, uso, desinstalación y solución de problemas;
+notas de versión, limitaciones conocidas, fuentes técnicas, política de datos,
+dependencias/licencias y procedimiento de soporte. Documentar cada dependencia
+adoptada con versión, propósito, instalación, ejemplo y límites.
 
-Documentar mínimo cinco fichas; proponemos psutil, subprocess, platform, socket,
-pathlib y PyInstaller. Cada ficha incluirá nombre, versión realmente utilizada,
-autor/proyecto, propósito, instalación, funciones, ejemplo, uso aquí y limitaciones.
-Los módulos estándar siguen la versión Python del build y no se instalan con pip.
-psutil 7.2.2 y PyInstaller 6.22.2 están fijados en el lockfile actual;
-registrar la versión efectiva al construir. Evaluar wmi/pywin32 como alternativas;
-pynput no es necesario para diagnóstico y no se capturará teclado.
+Las referencias sobre buses, PCI/PCIe, USB, E/S, DMA, interrupciones, drivers,
+PnP, SATA/NVMe y tipos de memoria servirán para explicar los diagnósticos.
+No imponer un número de fichas ni un formato bibliográfico específico.
+Conservar enlaces oficiales y fechas de consulta en la investigación.
 
-Bibliografía inicial oficial consultada el 2026-09-04 (convertir a APA 7 al redactar):
+## Validación y distribución
 
-- [psutil, API y mediciones](https://psutil.readthedocs.io/stable/index.html).
-- [Python, subprocess](https://docs.python.org/3/library/subprocess.html).
-- [Microsoft, ipconfig](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/ipconfig).
-- [Microsoft, nslookup](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/nslookup).
-- [PyInstaller, funcionamiento](https://pyinstaller.org/en/stable/operating-mode.html).
+Validar escenarios reales de USB conectado/desconectado, conectividad, GPU,
+discos, PCIe y drivers. Registrar entorno, versión, procedimiento, resultado
+esperado y obtenido. Retirar dispositivos de prueba de forma segura.
+Los fixtures de fallos y casos ambiguos se etiquetarán como simulados;
+no sustituyen las pruebas reales. Una prueba bloqueada se registra como no ejecutada.
 
-Explicar .py frente a .exe: PyInstaller empaqueta intérprete y dependencias;
-no vuelve el código inmune a inspección ni genera automáticamente binarios para
-otros sistemas. Preferir onedir conservando sus dependencias; onefile es opcional.
-Añadir fuentes oficiales de cada concepto restante antes de cerrar el PDF.
+Distribución prevista, separada del repositorio de desarrollo:
 
-## Pruebas reales, evidencia y entrega
-
-Ejecutar y documentar al menos cinco pruebas reales (planificar siete):
-USB conectado, USB desconectado, ping, GPU, disco, PCIe y driver.
-USB desconectado se prepara con un dispositivo de prueba y retirada segura;
-no desconectar almacenamiento en uso. No provocar fallos físicos ni cambiar drivers.
-
-Cada registro: ID, fecha, equipo anonimizado, entorno/permisos, procedimiento,
-resultado esperado, resultado obtenido, captura/salida y estado.
-Los cinco integradores se prueban con fixtures reproducibles, etiquetados como
-simulados. No cuentan automáticamente como las cinco pruebas reales.
-Prueba bloqueada por equipo/permisos queda NO EJECUTADA, nunca APROBADA.
-
-ZIP futuro: Proyecto_HardwareDiagnostic_GrupoX.zip; GrupoX e integrantes pendientes.
-Estructura:
 ```text
-Proyecto/
-  Ejecutable/HardwareDiagnostic.exe
-  Ejecutable/_internal/          dependencias si onedir
-  CodigoFuente/                 src, tests, scripts, assets y configuración
-  Reportes/                     diagnóstico ejemplo anonimizado TXT/JSON
-  Documentacion/Informe.pdf
-  Evidencias/                   pruebas reales documentadas
-  requirements.txt              dependencias necesarias fijadas
-  README.md                     integrantes, requisitos, instalación, uso y límites
+HardwareDiagnostic-<version>-windows-x64.zip
+  HardwareDiagnostic/
+    HardwareDiagnostic.exe
+    _internal/              dependencias si onedir
+    LEEME.txt               instalación, uso y soporte
+    CHANGELOG.md            cambios y limitaciones de la versión
+    THIRD_PARTY_NOTICES.txt licencias/atribuciones aplicables
 ```
 
-Crear requirements.txt coherente con pyproject/lockfile en la fase de entrega;
-no instalar dependencias nuevas ahora. Excluir .venv, cachés, secretos y reportes
-personales. Nombre nuevo del EXE solo cuando el build y sus tests lo soporten.
+El nombre final del EXE se cambiará cuando empaquetado y pruebas lo soporten;
+la ruta del ejecutable actual continúa indicada en README.md.
+Código fuente y evidencias internas permanecen en el repositorio privado.
+No incluir reportes personales, credenciales, cachés o entorno virtual en el ZIP.
+La eventual licencia comercial, firma y mecanismo de actualización están
+planificados en COMMERCIAL_ROADMAP.md, no se consideran implementados.
 
-Aceptación final: rúbrica de 25 puntos trazada en
-[ASSIGNMENT_TRACEABILITY.md](docs/ASSIGNMENT_TRACEABILITY.md);
-todos los casos obligatorios pasan; cinco pruebas reales documentadas;
-PDF revisado visualmente; EXE probado en máquina limpia y demo §40 completa.
+Aceptar una versión cuando los requisitos de
+[PRODUCT_REQUIREMENTS.md](docs/PRODUCT_REQUIREMENTS.md) tengan pruebas,
+el EXE funcione en un equipo limpio y el recorrido de usuario esté verificado.
 “No hay anomalías básicas” nunca equivale a “hardware sin fallas”.
-Los gates históricos en docs/architecture/08-production-readiness.md se refieren
-exclusivamente a v0.1.0, no a esta nueva entrega.
+La evidencia histórica se conserva con su alcance y fecha; no certifica
+funciones nuevas ni preparación comercial.
