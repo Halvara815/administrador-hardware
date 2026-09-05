@@ -235,6 +235,21 @@ def _paint_collapse(draw: ImageDraw.ImageDraw, size: float, color: str, width: i
         _line(draw, size, ((x, y + y_way * arm), (x, y), (x + x_way * arm, y)), color, width)
 
 
+def _paint_exit(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+    """Puerta abierta con flecha hacia fuera: la convención de «salir»."""
+    # Marco de la puerta, abierto por el lado derecho.
+    _line(
+        draw,
+        size,
+        ((0.62, 0.14), (0.16, 0.14), (0.16, 0.86), (0.62, 0.86)),
+        color,
+        width,
+    )
+    # Flecha que sale por la abertura.
+    _line(draw, size, ((0.46, 0.50), (0.86, 0.50)), color, width)
+    _line(draw, size, ((0.70, 0.34), (0.86, 0.50), (0.70, 0.66)), color, width)
+
+
 def _paint_lock(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
     _rect(draw, size, (0.20, 0.44, 0.80, 0.90), color, width, 0.10)
     draw.arc(
@@ -267,6 +282,7 @@ _PAINTERS: dict[str, IconPainter] = {
     "expand": _paint_expand,
     "collapse": _paint_collapse,
     "lock": _paint_lock,
+    "exit": _paint_exit,
 }
 
 

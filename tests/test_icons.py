@@ -9,7 +9,7 @@ class IconTests(TestCase):
     def test_every_navigation_entry_has_a_drawable_icon(self) -> None:
         available = set(icons.available_icons())
 
-        missing = [name for name, _, _ in NAV_ITEMS if name not in available]
+        missing = [entry.icon for entry in NAV_ITEMS if entry.icon not in available]
 
         self.assertEqual(missing, [])
 

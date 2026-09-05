@@ -8,6 +8,7 @@ from hardware_admin.ui.main_window import (
     MONITORING_DISK_SPECS,
     MONITORING_NET_SPECS,
     NAV_ITEMS,
+    SECTION_NAMES,
     adapter_bars,
     core_bars,
     series_for,
@@ -16,14 +17,49 @@ from hardware_admin.ui.main_window import (
 
 
 class UiContractTests(TestCase):
-    def test_navigation_contains_the_twelve_assignment_options(self) -> None:
-        labels = [label for _, label, _ in NAV_ITEMS]
-        components = [component for _, _, component in NAV_ITEMS if component is not None]
+    def test_navigation_contains_the_fifteen_options_and_exit(self) -> None:
+        """El enunciado pide 15 apartados mas Salir, en ese orden."""
+        labels = [entry.label for entry in NAV_ITEMS]
 
-        self.assertEqual(len(labels), 12)
+        self.assertEqual(len(NAV_ITEMS), 16)
+        self.assertEqual(labels[0], "1. Diagnóstico general")
+        self.assertEqual(labels[10], "11. Conectividad")
+        self.assertEqual(labels[11], "12. Monitorización")
+        self.assertEqual(labels[12], "13. Recomendaciones")
+        self.assertEqual(labels[13], "14. Generar reporte")
+        self.assertEqual(labels[14], "15. Exportar diagnóstico")
+        self.assertEqual(labels[15], "0. Salir")
+
+    def test_every_component_still_has_its_own_section(self) -> None:
+        """Ningun apartado de componente se pierde al reordenar el menu."""
+        components = [entry.component for entry in NAV_ITEMS if entry.component is not None]
+
         self.assertEqual(set(components), set(ComponentKind))
-        self.assertEqual(labels[0], "1. Información del sistema")
-        self.assertEqual(labels[-1], "12. Generar reporte")
+        self.assertEqual(len(components), len(set(components)))
+
+    def test_entries_without_component_declare_an_action(self) -> None:
+        """Conectividad, Recomendaciones, Reporte, Exportar y Salir no son componentes."""
+        actions = [entry.action for entry in NAV_ITEMS if entry.component is None]
+
+        self.assertEqual(
+            actions,
+            ["connectivity", "recommendations", "report", "export", "exit"],
+        )
+
+    def test_no_entry_declares_both_a_component_and_an_action(self) -> None:
+        for entry in NAV_ITEMS:
+            self.assertFalse(
+                entry.component is not None and entry.action is not None,
+                f"{entry.label}: no puede ser componente y acción a la vez",
+            )
+            self.assertTrue(
+                entry.component is not None or entry.action is not None,
+                f"{entry.label}: sin destino",
+            )
+
+    def test_every_component_has_a_short_section_name(self) -> None:
+        for component in ComponentKind:
+            self.assertIn(component, SECTION_NAMES)
 
 
 class MonitoringPanelContractTests(TestCase):

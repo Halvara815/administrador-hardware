@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import socket
 import threading
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -51,42 +53,65 @@ STATUS_LABELS = {
 
 STATUS_COLORS = theme.STATUS_COLORS
 
-NAV_ITEMS: tuple[tuple[str, str, ComponentKind | None], ...] = (
-    ("system", "1. Información del sistema", ComponentKind.SYSTEM),
-    ("cpu", "2. CPU", ComponentKind.CPU),
-    ("memory", "3. Memoria", ComponentKind.MEMORY),
-    ("disk", "4. Discos", ComponentKind.DISK),
-    ("network", "5. Red", ComponentKind.NETWORK),
-    ("usb", "6. USB", ComponentKind.USB),
-    ("pci", "7. PCI / PCIe", ComponentKind.PCI),
-    ("driver", "8. Controladores", ComponentKind.DRIVER),
-    ("problem_device", "9. Dispositivos con problemas", ComponentKind.PROBLEM_DEVICE),
-    ("monitor_gpu", "10. Monitor y GPU", ComponentKind.MONITOR_GPU),
-    ("io", "11. Monitorizar E/S", ComponentKind.IO),
-    ("report", "12. Generar reporte", None),
+#: Salto de línea usado al componer las vistas de texto.
+NL = chr(10)
+
+@dataclass(frozen=True, slots=True)
+class NavEntry:
+    """Una entrada del menú: o abre un componente, o ejecuta una acción.
+
+    Las dos son excluyentes. Conectividad, Recomendaciones, Generar reporte,
+    Exportar y Salir no corresponden a ningún `ComponentKind`, y con un simple
+    `None` no se distinguiría una acción de otra.
+    """
+
+    icon: str
+    label: str
+    component: ComponentKind | None = None
+    action: str | None = None
+
+
+#: Los 15 apartados del enunciado más Salir, en el orden pedido.
+NAV_ITEMS: tuple[NavEntry, ...] = (
+    NavEntry("system", "1. Diagnóstico general", ComponentKind.SYSTEM),
+    NavEntry("cpu", "2. CPU", ComponentKind.CPU),
+    NavEntry("memory", "3. RAM", ComponentKind.MEMORY),
+    NavEntry("pci", "4. PCI / PCIe", ComponentKind.PCI),
+    NavEntry("network", "5. Red", ComponentKind.NETWORK),
+    NavEntry("usb", "6. USB", ComponentKind.USB),
+    NavEntry("disk", "7. Almacenamiento", ComponentKind.DISK),
+    NavEntry("monitor_gpu", "8. GPU / vídeo", ComponentKind.MONITOR_GPU),
+    NavEntry("driver", "9. Controladores", ComponentKind.DRIVER),
+    NavEntry("problem_device", "10. Dispositivos con problemas", ComponentKind.PROBLEM_DEVICE),
+    NavEntry("check", "11. Conectividad", action="connectivity"),
+    NavEntry("io", "12. Monitorización", ComponentKind.IO),
+    NavEntry("info", "13. Recomendaciones", action="recommendations"),
+    NavEntry("report", "14. Generar reporte", action="report"),
+    NavEntry("save", "15. Exportar diagnóstico", action="export"),
+    NavEntry("exit", "0. Salir", action="exit"),
 )
 
 #: Nombre corto de cada sección, usado en el botón de análisis independiente.
 SECTION_NAMES: dict[ComponentKind, str] = {
     ComponentKind.SYSTEM: "sistema",
     ComponentKind.CPU: "CPU",
-    ComponentKind.MEMORY: "memoria",
-    ComponentKind.DISK: "discos",
+    ComponentKind.MEMORY: "RAM",
+    ComponentKind.DISK: "almacenamiento",
     ComponentKind.NETWORK: "red",
     ComponentKind.USB: "USB",
     ComponentKind.PCI: "PCI",
     ComponentKind.DRIVER: "controladores",
     ComponentKind.PROBLEM_DEVICE: "dispositivos",
-    ComponentKind.MONITOR_GPU: "monitor y GPU",
-    ComponentKind.IO: "E/S",
+    ComponentKind.MONITOR_GPU: "GPU y vídeo",
+    ComponentKind.IO: "monitorización",
 }
 
 COMPONENT_ORDER: tuple[ComponentKind, ...] = tuple(
-    component for _, _, component in NAV_ITEMS if component is not None
+    entry.component for entry in NAV_ITEMS if entry.component is not None
 )
 
 ICON_NAMES: dict[ComponentKind, str] = {
-    component: icon for icon, _, component in NAV_ITEMS if component is not None
+    entry.component: entry.icon for entry in NAV_ITEMS if entry.component is not None
 }
 
 #: Título, peso y ancho mínimo de cada columna de la matriz de diagnóstico.
@@ -661,11 +686,12 @@ class HardwareAdminApp(ctk.CTk):
         navigation.grid(row=1, column=0, sticky="nsew", padx=(12, 6))
         navigation.grid_columnconfigure(0, weight=1)
 
-        for row, (icon_name, label, component) in enumerate(NAV_ITEMS):
+        for row, entry in enumerate(NAV_ITEMS):
+            icon_name, label, component = entry.icon, entry.label, entry.component
             command = (
-                self.export_report
-                if component is None
-                else partial(self.select_component, component)
+                partial(self.select_component, component)
+                if component is not None
+                else partial(self.run_action, entry.action or "")
             )
             button = ctk.CTkButton(
                 navigation,
@@ -1131,14 +1157,168 @@ class HardwareAdminApp(ctk.CTk):
         ).grid(row=0, column=1, sticky="e")
 
     def _render_initial_matrix(self) -> None:
-        for icon_name, label, component in NAV_ITEMS:
+        for entry in NAV_ITEMS:
+            component = entry.component
             if component is None:
                 continue
             self.matrix.add_row(
                 component,
-                label.split(". ", 1)[-1],
-                self.icons.get(icon_name, 17, theme.COMPONENT_COLORS[component]),
+                entry.label.split(". ", 1)[-1],
+                self.icons.get(entry.icon, 17, theme.COMPONENT_COLORS[component]),
             )
+
+    def run_action(self, action: str) -> None:
+        """Ejecuta una entrada del menú que no corresponde a un componente."""
+        if action == "connectivity":
+            self.show_connectivity()
+        elif action == "recommendations":
+            self.show_recommendations()
+        elif action == "report":
+            self.show_report()
+        elif action == "export":
+            self.export_report()
+        elif action == "exit":
+            self._on_close()
+
+    def _show_action_view(self, title: str, body: str) -> None:
+        """Presenta una vista sin componente: oculta paneles y escribe la ficha."""
+        self.section_title.configure(text=title)
+        self.monitoring_panel.grid_remove()
+        for panel in self.section_panels.values():
+            panel.grid_remove()
+        self._set_console(body)
+        self._sync_evidence_window()
+
+    def show_report(self) -> None:
+        """Vista del reporte completo. No guarda nada: eso es «Exportar»."""
+        report = self.report
+        if report is None:
+            self._show_action_view(
+                "REPORTE DE DIAGNÓSTICO",
+                "Todavía no hay diagnóstico." + NL + NL
+                + "Ejecute «Analizar equipo» o el análisis de una sección concreta.",
+            )
+            return
+
+        lines = [
+            "REPORTE DE DIAGNÓSTICO",
+            "======================",
+            "",
+            f"Inicio:  {report.started_at.astimezone():%Y-%m-%d %H:%M:%S}",
+            f"Fin:     {report.completed_at.astimezone():%Y-%m-%d %H:%M:%S}",
+            f"Equipo:  {socket.gethostname()}",
+            "",
+        ]
+        if report.symptom:
+            lines.extend([f"Síntoma reportado: {report.symptom}", ""])
+        if report.expected_device:
+            lines.extend([f"Dispositivo esperado: {report.expected_device}", ""])
+
+        lines.extend(["MATRIZ DE DIAGNÓSTICO", "---------------------"])
+        for result in report.results:
+            estado = STATUS_LABELS[result.status]
+            lines.append(f"  {result.name:<28} {estado:<16} {result.summary}")
+            if result.possible_problem:
+                lines.append(f"      posible problema: {result.possible_problem}")
+
+        lines.extend(["", "CONCLUSIÓN", "----------", report.conclusion])
+
+        if report.limitations:
+            lines.extend(["", "LIMITACIONES", "------------"])
+            lines.extend(f"  - {item}" for item in report.limitations)
+
+        if report.recommendations:
+            lines.extend(["", "RECOMENDACIONES", "---------------"])
+            for number, item in enumerate(report.recommendations, start=1):
+                marca = " (modifica el sistema)" if item.modifies_system else ""
+                lines.append(f"  {number}. {item.title}{marca}")
+
+        lines.extend(
+            [
+                "",
+                "Use «15. Exportar diagnóstico» para guardar este reporte en disco.",
+            ]
+        )
+        self._show_action_view("REPORTE DE DIAGNÓSTICO", NL.join(lines))
+
+    def show_connectivity(self) -> None:
+        """Etapas de conectividad ya medidas por el servicio, sin volver a probar."""
+        result = self.results_by_kind.get(ComponentKind.NETWORK)
+        if result is None:
+            self._show_action_view(
+                "CONECTIVIDAD",
+                "Sin datos de conectividad.\n\n"
+                "Ejecute «Analizar equipo» o el análisis de la sección Red para "
+                "obtener las pruebas escalonadas de adaptador, IP, puerta de enlace, "
+                "acceso externo y resolución DNS.",
+            )
+            return
+
+        lines = [
+            "CONECTIVIDAD",
+            "============",
+            "",
+            f"DIAGNÓSTICO: {result.facts.get('Diagnóstico de red', 'No disponible')}",
+            "",
+            "PRUEBAS ESCALONADAS",
+            "-------------------",
+        ]
+        stages = result.facts.get("Conectividad")
+        if isinstance(stages, list) and stages:
+            for stage in stages:
+                if not isinstance(stage, dict):
+                    continue
+                marca = "OK   " if stage.get("Resultado") == "OK" else "FALLO"
+                lines.append(f"[{marca}] {stage.get('Etapa', '?')} -> {stage.get('Destino', '?')}")
+                lines.append(f"         {stage.get('Detalle', '')}")
+        else:
+            lines.append("No se registraron etapas de conectividad.")
+
+        recomendaciones = result.facts.get("Recomendaciones")
+        if isinstance(recomendaciones, list) and recomendaciones:
+            lines.extend(["", "SUGERENCIAS", "-----------"])
+            lines.extend(f"  - {item}" for item in recomendaciones)
+
+        lines.extend(
+            [
+                "",
+                "NOTA: un ping sin respuesta puede reflejar ICMP bloqueado; el resultado",
+                "no es concluyente sin pruebas complementarias.",
+            ]
+        )
+        self._show_action_view("CONECTIVIDAD", "\n".join(lines))
+
+    def show_recommendations(self) -> None:
+        """Todos los procedimientos propuestos, ordenados por gravedad."""
+        recommendations = self.report.recommendations if self.report else ()
+        if not recommendations:
+            self._show_action_view(
+                "RECOMENDACIONES",
+                "No hay recomendaciones.\n\n"
+                "No se detectaron anomalías en los indicadores consultados ni se "
+                "registró un síntoma. Esto no equivale a afirmar que el hardware "
+                "esté libre de fallas: sólo que las comprobaciones realizadas no "
+                "encontraron anomalías.",
+            )
+            return
+
+        lines = ["RECOMENDACIONES", "===============", ""]
+        for number, item in enumerate(recommendations, start=1):
+            lines.append(f"{number}. {item.title}  [{item.component.value}]")
+            lines.append(f"   Causa: {item.cause}")
+            lines.append("")
+            lines.append("   Pasos:")
+            lines.extend(f"     {index}. {step}" for index, step in enumerate(item.steps, 1))
+            lines.extend(["", f"   Fundamento: {item.rationale}"])
+            lines.append(f"   Comprobación posterior: {item.verification}")
+            lines.append(
+                "   ! MODIFICA EL SISTEMA: la aplicación no ejecuta este "
+                "procedimiento; lo aplica usted."
+                if item.modifies_system
+                else "   Sólo consulta: no altera el equipo."
+            )
+            lines.append("")
+        self._show_action_view("RECOMENDACIONES", "\n".join(lines))
 
     def select_component(self, component: ComponentKind) -> None:
         self.selected_component = component
