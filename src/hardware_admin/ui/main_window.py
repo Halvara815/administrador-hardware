@@ -1195,6 +1195,9 @@ class HardwareAdminApp(ctk.CTk):
             "-------------------",
         ]
         for key, value in result.facts.items():
+            # Series numericas para los graficos: no son texto de la ficha.
+            if str(key).startswith("_"):
+                continue
             lines.append(f"{key}:")
             lines.append(_format_value(value, "  "))
             lines.append("")

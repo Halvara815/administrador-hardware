@@ -119,7 +119,12 @@ class CpuCollector:
         self.runner = runner
 
     def collect(self) -> ComponentResult:
+        # Cebar el contador por nucleo antes de la medicion global: la lectura
+        # posterior cubre exactamente esa misma ventana de un segundo, sin
+        # alargar el analisis y sin alterar el valor que clasifica la salud.
+        psutil.cpu_percent(interval=None, percpu=True)
         usage = psutil.cpu_percent(interval=1.0)
+        per_core = psutil.cpu_percent(interval=None, percpu=True)
         frequency = psutil.cpu_freq()
         result = self.runner.run(PowerShellQuery.CPU_INFO)
         rows = parse_json_rows(result)
@@ -134,6 +139,9 @@ class CpuCollector:
                 f"{frequency.current / 1000:.2f} GHz" if frequency else "No disponible"
             ),
             "Uso": f"{usage:.1f}%",
+            # Series para los graficos; los renderizadores omiten las claves con "_".
+            "_uso": float(usage),
+            "_nucleos": [float(value) for value in per_core],
         }
         status = CPU_RULE.classify(usage)
         problem = "Carga elevada del procesador" if status is not HealthStatus.NORMAL else None
@@ -163,6 +171,12 @@ class MemoryCollector:
             "En uso": format_bytes(memory.used),
             "Porcentaje de uso": f"{memory.percent:.1f}%",
             "Memoria virtual usada": format_bytes(swap.used),
+            "_uso": float(memory.percent),
+            "_memoria": {
+                "usada": float(memory.used),
+                "disponible": float(memory.available),
+                "total": float(memory.total),
+            },
         }
         status = MEMORY_RULE.classify(memory.percent)
         problem = "Poca memoria disponible" if status is not HealthStatus.NORMAL else None
@@ -275,6 +289,16 @@ class NetworkCollector:
 
         facts: dict[str, Any] = {
             "Adaptadores": adapters,
+            "_adaptadores": [
+                {
+                    "nombre": item["Adaptador"],
+                    "mbps": float(stats[item["Adaptador"]].speed)
+                    if stats.get(item["Adaptador"]) and stats[item["Adaptador"]].speed
+                    else 0.0,
+                    "conectado": item["Estado"] == "Conectado",
+                }
+                for item in adapters
+            ],
             "Conectividad": stages_fact,
             "Diagnóstico de red": conn_report.problem_title
             or "Conectividad normal y acceso a Internet verificado",
