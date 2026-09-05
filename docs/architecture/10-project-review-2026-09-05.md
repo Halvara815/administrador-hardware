@@ -73,8 +73,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. La advertencia de `.pytest_cache` fue corregida mediante la configuración explícita
-   de `cache_dir = "scratch/pytest-cache-verify"` en `pyproject.toml`, eliminando `PytestCacheWarning` / `WinError 183` y cualquier advertencia de acceso denegado en `ruff`.
+1. pytest ejecuta 199 passed, 8 skipped y 29 subtests passed; la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
