@@ -33,6 +33,14 @@ P24–P28 añaden prioridad de ampliaciones, asesor SSD, revisión de velocidad 
 GPU por aplicación y criterios para acudir a un técnico. P16–P18 se amplían, sin
 duplicarse, con cambios recientes, ficha de compra y verificación de la ampliación.
 
+La [revisión de implementación del 2026-09-05](docs/architecture/10-project-review-2026-09-05.md)
+marca las fases base realmente completadas y separa sus límites de los pendientes
+comerciales y E1–E8. No sustituye requisitos del ingeniero.
+
+**Antes de implementar cualquier pendiente, seguir las
+[instrucciones canónicas de ejecución](docs/EXECUTION_INSTRUCTIONS.md).** Son la
+única secuencia autorizada para F0–F9, E1–E8 e I1–I5; no crear fases alternativas.
+
 ## Decisiones y fundamento
 
 - Conservar Python, CustomTkinter y el monolito modular: ya resuelven ventana,

@@ -147,7 +147,15 @@ Capacidades:
 - Estado, temperatura, vida útil estimada y contadores críticos de SSD/HDD.
 - Capacidad, tipo de medio, bus, firmware y errores reportados.
 - Batería: capacidad de diseño, capacidad actual, desgaste y ciclos disponibles.
+- Estado del cargador y plan de energía; generar `powercfg /batteryreport` sólo
+  por acción explícita y con destino elegido por el usuario.
 - BIOS/UEFI, placa base, TPM y Secure Boot como información diagnóstica.
+- Inventario ampliado de Bluetooth, cámara, micrófono, audio, teclado/mouse y
+  pantallas: presencia, estado/código PnP y resolución/modo disponible cuando
+  Windows lo exponga. No asumir que todos los periféricos son consultables.
+- Inventario profundo de módulos RAM: fabricante, número de parte, ranura,
+  capacidad, generación y velocidad configurada/reportada, distinguiendo
+  información SMBIOS de un límite de ampliación validado.
 
 Seguridad:
 
@@ -158,6 +166,8 @@ Seguridad:
 Pruebas:
 
 - Fixtures SATA, NVMe, equipo sin SMART y equipo sin batería.
+- Batería/cargador no disponibles, periféricos desconectados y firmware que
+  omite campos SMBIOS; los campos ausentes deben ser `NOT_SUPPORTED`, no sanos.
 - Valores ausentes o informados con unidades diferentes.
 - Integración real sin asumir que todos los discos soportan las mismas propiedades.
 
@@ -210,6 +220,11 @@ Capacidades:
 - Latencia, pérdida de paquetes y estadísticas de interfaz.
 - Intensidad de Wi-Fi cuando esté disponible.
 - Eventos recientes WHEA, errores de disco, fallos de controlador y reinicios inesperados.
+- Eventos de pantalla azul y códigos de problema PnP; conservar fecha y ventana
+  temporal, sin presentar Kernel-Power 41 como diagnóstico causal por sí solo.
+- Revisión de drivers por dispositivo: versión, fecha, proveedor, firma, código,
+  dispositivo deshabilitado/faltante y aplicabilidad OEM/Windows Update. La
+  antigüedad por fecha no basta para recomendar actualización.
 - Ventana temporal visible para evitar conclusiones basadas en eventos antiguos.
 
 Seguridad y privacidad:
@@ -271,6 +286,9 @@ Controles obligatorios:
 - Límites térmicos y de recursos; interrupción ante una señal peligrosa.
 - Espacio temporal limitado, ruta validada y limpieza garantizada.
 - No ejecutar pruebas destructivas, firmware, overclock ni reparación automática.
+- Diagnóstico de memoria de Windows y cualquier prueba que requiera reinicio sólo
+  con confirmación explícita, explicación de impacto y registro de que no se
+  ejecutó si el usuario cancela.
 
 Pruebas:
 

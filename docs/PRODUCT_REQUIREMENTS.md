@@ -4,37 +4,37 @@ Estado: capacidades actuales y ampliaciones por fases. El plan registra la Fase 
 completada; los demás resultados se verificarán antes de cada distribución.
 La tabla expresa criterios de aceptación, no una certificación de funciones pendientes.
 
-| ID | Capacidad | Aceptación | Fase |
+| ID | Capacidad | Estado | Aceptación | Fase |
 |---|---|---|---|
-| P01 | Interfaz y resumen | Navegación clara, conteos únicos, estados y evidencia | 4–5 |
-| P02 | CPU/RAM | Umbrales sin huecos; carga alta no equivale a daño físico | 1 |
-| P03 | PCI/PCIe | Nombre, clase, ID, driver; localizar fallo en un dispositivo | 3 |
-| P04 | USB | Distinguir ausencia, error del periférico y falta de volumen | 3 |
-| P05 | Red | IPv4/IPv6, gateway, DNS y alcance de conectividad | 2 |
-| P06 | Almacenamiento | Medio/bus/volumen, capacidad y recomendaciones por espacio | 3 |
-| P07 | GPU/drivers | Identidad, versión y límites de un estado OK | 3 |
-| P08 | Motor | Evidencia, causas posibles, siguiente comprobación y recomendaciones | 1–4 |
-| P09 | Monitorización/gráficos | Muestras acotadas, fecha, unidades y parada | 4 |
-| P10 | Exportación | HTML y futuros JSON/TXT; datos personales identificados | 5 |
-| P11 | Documentación | Instalación, uso, límites, soporte, dependencias y fuentes | 6 |
-| P12 | Distribución | EXE probado en equipo limpio, versión y dependencias completas | 7 |
-| P13 | IA opcional | Fuentes comprobadas, abstención, consentimiento y fallback | I1–I5 |
-| P14 | Asesor RAM | Instalada, máximo reportado/verificado, soldada, ranuras y configuración añadir/reemplazar; abstención ante límites contradictorios | E2; I1–I5 opcional |
-| P15 | Asesor drivers | Aplicabilidad Windows/OEM; ninguna instalación automática | I1–I5 |
-| P16 | Guía por síntoma | C1–C5, cambios recientes declarados, evidencia y siguiente prueba; no confundir cronología con causa | E1 |
-| P17 | Antes de comprar / ¿Por qué? | Ficha común SKU, compatibilidad, accesorios, costes/fuentes y datos faltantes; priorizar comprobaciones gratuitas | E1–E2, E8 |
-| P18 | Verificación y cambios | Verificar ampliación esperada y repetir pruebas; comparar JSON sin certificar estabilidad ni mejora sin baseline comparable | E3 |
-| P19 | Compartir con técnico | Vista previa depurada; originales intactos; validar importación y esquema | E3 |
-| P20 | Compatibilidad GPU | Fuente, conectores, espacio, ranura y SO; datos desconocidos no equivalen a incompatibilidad | E4 |
-| P21 | Limitación por sesión | Contexto y métricas reales, cancelación; sin porcentaje universal CPU/GPU | E5 |
-| P22 | Refresco de pantalla | Modos disponibles para conexión/resolución actuales; no modificar configuración | E6 |
-| P23 | Recomendar GPU concreta | SKU y compatibilidad, uso/resolución/FPS objetivo, presupuesto y fuentes; justificar compra o no compra; sin prometer eliminar todo cuello de botella | E4–E5 |
+| P01 | Interfaz y resumen | COMPLETADA | Navegación clara, conteos únicos, estados y evidencia | 4–5 |
+| P02 | CPU/RAM | COMPLETADA | Umbrales sin huecos; carga alta no equivale a daño físico | 1 |
+| P03 | PCI/PCIe | COMPLETADA | Nombre, clase, ID, driver; localizar fallo en un dispositivo | 3 |
+| P04 | USB | COMPLETADA | Distinguir ausencia, error del periférico y falta de volumen | 3 |
+| P05 | Red | COMPLETADA | IPv4/IPv6, gateway, DNS y alcance de conectividad | 2 |
+| P06 | Almacenamiento | COMPLETADA | Medio/bus/volumen, capacidad y recomendaciones por espacio | 3 |
+| P07 | GPU/drivers | COMPLETADA (inventario) | Identidad, versión y límites de un estado OK | 3 |
+| P08 | Motor | COMPLETADA (reglas base) | Evidencia, causas posibles, siguiente comprobación y recomendaciones | 1–4 |
+| P09 | Monitorización/gráficos | COMPLETADA (E/S) | Muestras acotadas, fecha, unidades y parada | 4 |
+| P10 | Exportación | COMPLETADA | HTML, JSON/TXT, identidad opcional y limitaciones | 5 |
+| P11 | Documentación | COMPLETADA | Instalación, uso, límites, soporte, dependencias y fuentes | 6 |
+| P12 | Distribución | PARCIAL | EXE/ZIP/versionado completos; falta equipo limpio | 7 |
+| P13 | IA opcional | NO INICIADA | Fuentes comprobadas, abstención, consentimiento y fallback | I1–I5 |
+| P14 | Asesor RAM | NO INICIADA | Instalada, máximo reportado/verificado, soldada, ranuras y configuración añadir/reemplazar; abstención ante límites contradictorios | E2; I1–I5 opcional |
+| P15 | Asesor drivers | NO INICIADA | Aplicabilidad Windows/OEM; ninguna instalación automática | I1–I5 |
+| P16 | Guía por síntoma | NO INICIADA | C1–C5, cambios recientes declarados, evidencia y siguiente prueba; no confundir cronología con causa | E1 |
+| P17 | Antes de comprar / ¿Por qué? | NO INICIADA | Ficha común SKU, compatibilidad, accesorios, costes/fuentes y datos faltantes; priorizar comprobaciones gratuitas | E1–E2, E8 |
+| P18 | Verificación y cambios | NO INICIADA | Verificar ampliación esperada y repetir pruebas; comparar JSON sin certificar estabilidad ni mejora sin baseline comparable | E3 |
+| P19 | Compartir con técnico | NO INICIADA | Vista previa depurada; originales intactos; validar importación y esquema | E3 |
+| P20 | Compatibilidad GPU | NO INICIADA | Fuente, conectores, espacio, ranura y SO; datos desconocidos no equivalen a incompatibilidad | E4 |
+| P21 | Limitación por sesión | NO INICIADA | Contexto y métricas reales, cancelación; sin porcentaje universal CPU/GPU | E5 |
+| P22 | Refresco de pantalla | NO INICIADA | Modos disponibles para conexión/resolución actuales; no modificar configuración | E6 |
+| P23 | Recomendar GPU concreta | NO INICIADA | SKU y compatibilidad, uso/resolución/FPS objetivo, presupuesto y fuentes; justificar compra o no compra; sin prometer eliminar todo cuello de botella | E4–E5 |
 
-| P24 | Qué actualizar primero | Prioridad RAM/GPU/almacenamiento según evidencia, objetivo y coste total; no comprar como resultado válido | E8 |
-| P25 | Asesor SSD | Interfaz/protocolo/formato y ranuras verificados; añadir/reemplazar, capacidad y accesorios; no clonar/formatear | E7 |
-| P26 | Velocidad RAM | Unidades y configuración frente a límites verificables; sin garantizar perfiles ni cambiar BIOS | E2 |
-| P27 | GPU por aplicación | Proceso/periodo/adaptador observados; multi-GPU y desconocido explícitos; sin cambios automáticos | E5 |
-| P28 | Cuándo acudir a técnico | Criterios de parada y límites; orientación sin declarar seguridad ante ausencia de datos | E1 |
+| P24 | Qué actualizar primero | NO INICIADA | Prioridad RAM/GPU/almacenamiento según evidencia, objetivo y coste total; no comprar como resultado válido | E8 |
+| P25 | Asesor SSD | NO INICIADA | Interfaz/protocolo/formato y ranuras verificados; añadir/reemplazar, capacidad y accesorios; no clonar/formatear | E7 |
+| P26 | Velocidad RAM | NO INICIADA | Unidades y configuración frente a límites verificables; sin garantizar perfiles ni cambiar BIOS | E2 |
+| P27 | GPU por aplicación | NO INICIADA | Proceso/periodo/adaptador observados; multi-GPU y desconocido explícitos; sin cambios automáticos | E5 |
+| P28 | Cuándo acudir a técnico | NO INICIADA | Criterios de parada y límites; orientación sin declarar seguridad ante ausencia de datos | E1 |
 
 E1–E8 están **NO INICIADOS**. Contratos, dependencias, escenarios adversos y gates:
 [diseño del asesor](architecture/09-diagnostic-advisor.md). Las pruebas históricas
