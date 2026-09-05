@@ -36,6 +36,7 @@ hardware_admin = ["py.typed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+cache_dir = ".pytest_cache"
 
 [tool.ruff]
 line-length = 100

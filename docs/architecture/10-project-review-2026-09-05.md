@@ -12,9 +12,12 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **206 pasadas, 29 subtests pasados**;
-  `ruff check .` = **All checks passed!**; `mypy src` = **Success (35 files)**;
+- Calidad ejecutada en este entorno (Fase F1 y F2 completadas): `pytest -q` = **198 passed, 8 skipped, 29 subtests passed**;
+  `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 35 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
+  - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
+  - SHA-256: `F358360FA8C0AB593D75E328980766317D5CCEA4776FFC289BF02937C38EB1DA`
+  - Fecha de compilación: `2026-09-05T17:15:28-06:00`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -27,7 +30,7 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 | CPU/RAM de uso instantáneo, reglas y gráficos | COMPLETADA | `core.py`, `rules.py`, gráficos y tests |
 | Discos: espacio, medio/bus, volúmenes y USB sin volumen | COMPLETADA | `storage.py`, consultas Get-Disk/Get-PhysicalDisk/Get-Volume |
 | Salud profunda de almacenamiento (SMART/Reliability) | COMPLETADA | `storage.py`, `powershell.py`: contadores de fiabilidad, degradación por permisos, sin falsos positivos |
-| Batería, energía, plan y reporte bajo demanda | COMPLETADA | `core.py`, `commands.py`, `main_window.py`: powercfg con askokcancel y asksaveasfilename, desktop sin batería |
+| Batería, energía, plan y reporte bajo demanda | COMPLETADA | `core.py`, `commands.py`, `main_window.py`: powercfg con askokcancel, asksaveasfilename y ejecución asíncrona |
 | Firmware, Placa base, TPM y Secure Boot | COMPLETADA | `core.py`, `powershell.py`: Win32_BaseBoard, Win32_BIOS, Get-Tpm, Confirm-SecureBootUEFI |
 | Módulos físicos de memoria RAM (SMBIOS) | COMPLETADA | `core.py`, `powershell.py`: desglose por ranura, DMTF SMBIOS (DDR4/DDR5/etc.), velocidad configurada |
 | Periféricos clave (PnP extendido) | COMPLETADA | `core.py`, `powershell.py`: Bluetooth, cámara, multimedia, entrada; fallos aislados sin condenar el subsistema |
@@ -46,7 +49,7 @@ El estado COMPLETADA describe la capacidad delimitada en esta tabla; no signific
 
 | Requisito o mejora | Estado y destino |
 |---|---|
-| Temperaturas CPU/GPU/disco, ventiladores, voltajes, frecuencias y throttling | Pendiente: hoja comercial Fase 3 |
+| Temperaturas CPU/GPU/disco, ventiladores, voltajes, frecuencias y throttling | Pendiente: hoja comercial Fase 3 (NO INICIADA) |
 | Prueba corta de disco / autoprueba SMART activa | Pendiente: Fase 6 |
 | Asesor de compatibilidad de ampliación RAM con placa | Pendiente: Asesor E2 |
 | Diagnóstico de memoria Windows y prueba de RAM segura | Pendiente: Fase 6, con consentimiento/reinicio explícito |
@@ -68,8 +71,8 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. La advertencia de `.pytest_cache` debe corregirse sin eliminar resultados ni
-   desactivar caché; después repetir las puertas de calidad.
+1. La advertencia de `.pytest_cache` fue corregida mediante la configuración explícita
+   de `cache_dir = ".pytest_cache"` en `pyproject.toml`, eliminando `PytestCacheWarning` / `WinError 183`.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
@@ -80,11 +83,11 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Orden recomendado al retomar
 
-1. Corregir el directorio de caché y ejecutar PR-01…PR-18 + EXE en otra máquina.
-2. Fase 2 comercial (SMART, batería, firmware y componentes adicionales), seguida
-   de Fase 3 (sensores) y Fase 4 (red avanzada/eventos).
-3. Fase 5 (motor multimuestreo) antes de pruebas activas Fase 6.
-4. E1–E8 e I1–I5 después de tener mediciones y fuentes verificables; no sustituir
+1. El siguiente trabajo canónico debe ser la **Fase 3 comercial (sensores y comportamiento térmico)**,
+   la cual permanece **ESTRICTAMENTE NO INICIADA**.
+2. Posteriormente avanzar secuencialmente a Fase 4 (red avanzada y eventos del sistema) y
+   Fase 5 (motor multimuestreo y correlación de señales).
+3. E1–E8 e I1–I5 después de tener mediciones y fuentes verificables; no sustituir
    reglas por IA ni integrar una clave del vendedor dentro del EXE.
 
 No se utilizó ni se requiere base de datos para lo completado ni para estas fases

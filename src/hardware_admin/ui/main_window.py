@@ -1820,7 +1820,22 @@ class HardwareAdminApp(ctk.CTk):
             if not overwrite:
                 return
 
-        result = generate_battery_report(target_path)
+        self.battery_report_button.configure(state="disabled")
+        self.progress_label.configure(text="Generando reporte de batería...")
+
+        def _worker() -> None:
+            try:
+                res = generate_battery_report(target_path)
+            except Exception as exc:  # noqa: BLE001
+                err_text = str(exc)
+                self.after(0, lambda msg=err_text: self._on_battery_report_failed(msg))
+                return
+            self.after(0, lambda: self._on_battery_report_completed(target_path, res))
+
+        threading.Thread(target=_worker, name="battery-report-worker", daemon=True).start()
+
+    def _on_battery_report_completed(self, target_path: Path, result: Any) -> None:
+        self.battery_report_button.configure(state="normal")
         if result.exit_code == 0:
             self.progress_label.configure(text=f"Reporte de batería: {target_path.name}")
             messagebox.showinfo(
@@ -1829,12 +1844,22 @@ class HardwareAdminApp(ctk.CTk):
                 parent=self,
             )
         else:
-            err_msg = result.error.strip() or f"Código de salida: {result.exit_code}"
+            err_msg = str(getattr(result, "error", "")).strip() or f"Código de salida: {result.exit_code}"
+            self.progress_label.configure(text="")
             messagebox.showerror(
                 "Error al generar reporte",
                 f"No se pudo generar el reporte de batería.\n\nDetalle: {err_msg}",
                 parent=self,
             )
+
+    def _on_battery_report_failed(self, error_message: str) -> None:
+        self.battery_report_button.configure(state="normal")
+        self.progress_label.configure(text="")
+        messagebox.showerror(
+            "Error al generar reporte",
+            f"Ocurrió un error inesperado al generar el reporte de batería:\n\n{error_message}",
+            parent=self,
+        )
 
     def export_debug_state(self) -> str:
         """Representación estable usada por el smoke test, sin datos sensibles completos."""

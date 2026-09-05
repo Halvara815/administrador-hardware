@@ -438,3 +438,49 @@ class CommercialF2CommandTests(TestCase):
         res = runner.battery_report("C:\\temp\\report.html & calc.exe")
         self.assertEqual(res.exit_code, -1)
         self.assertIn("inválida o no segura", res.error)
+
+    def test_ui_async_battery_report_callbacks(self) -> None:
+        """Prueba de la lógica aislada de callbacks asíncronos para UI sin requerir sesión gráfica."""
+        from hardware_admin.infrastructure.commands import NativeCommandResult
+
+        mock_app = MagicMock()
+        mock_button = MagicMock()
+        mock_label = MagicMock()
+        mock_app.battery_report_button = mock_button
+        mock_app.progress_label = mock_label
+
+        # Importar y bindear los métodos de la clase a mock_app
+        from hardware_admin.ui.main_window import HardwareAdminApp
+
+        # Caso éxito
+        success_result = NativeCommandResult(
+            command=("powercfg.exe", "/batteryreport"),
+            output="Success",
+            exit_code=0,
+            error="",
+        )
+        with patch("hardware_admin.ui.main_window.messagebox.showinfo") as mock_info:
+            HardwareAdminApp._on_battery_report_completed(mock_app, Path("C:\\report.html"), success_result)
+            mock_button.configure.assert_called_with(state="normal")
+            mock_label.configure.assert_called_with(text="Reporte de batería: report.html")
+            mock_info.assert_called_once()
+
+        # Caso fallo
+        fail_result = NativeCommandResult(
+            command=("powercfg.exe", "/batteryreport"),
+            output="",
+            exit_code=1,
+            error="Access is denied",
+        )
+        with patch("hardware_admin.ui.main_window.messagebox.showerror") as mock_error:
+            HardwareAdminApp._on_battery_report_completed(mock_app, Path("C:\\report.html"), fail_result)
+            mock_button.configure.assert_called_with(state="normal")
+            mock_label.configure.assert_called_with(text="")
+            mock_error.assert_called_once()
+
+        # Caso excepción no controlada
+        with patch("hardware_admin.ui.main_window.messagebox.showerror") as mock_error:
+            HardwareAdminApp._on_battery_report_failed(mock_app, "Crash")
+            mock_button.configure.assert_called_with(state="normal")
+            mock_label.configure.assert_called_with(text="")
+            mock_error.assert_called_once()

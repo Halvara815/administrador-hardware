@@ -137,7 +137,7 @@ Estimación: 1–2 horas.
 
 ## Fase 2: almacenamiento, batería y firmware
 
-Estado: **COMPLETADA** (2026-09-05: Almacenamiento profundo con SMART/Reliability, degradación de permisos, batería y energía con detección desktop sin batería, firmware BIOS/UEFI/TPM/Secure Boot, desglose de módulos físicos RAM y powercfg /batteryreport bajo demanda con confirmación explícita. 206 pruebas pasadas y 29 subtests pasados en pytest, ruff check limpio, mypy sin errores en 35 archivos, build y smoke-test de PyInstaller validados).
+Estado: **COMPLETADA** (2026-09-05: Almacenamiento profundo con SMART/Reliability, degradación de permisos, batería y energía con detección desktop sin batería, firmware BIOS/UEFI/TPM/Secure Boot, desglose de módulos físicos RAM y powercfg /batteryreport bajo demanda asíncrono con confirmación explícita. 198 passed, 8 skipped, 29 subtests passed, ruff check limpio, mypy sin errores en 35 archivos, build y smoke-test de PyInstaller validados).
 
 Objetivo: pasar de inventario básico a salud física consultable.
 
