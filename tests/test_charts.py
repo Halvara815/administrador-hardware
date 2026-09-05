@@ -5,6 +5,7 @@ from unittest import TestCase
 from hardware_admin.ui.charts import (
     GAUGE_SWEEP,
     bar_widths,
+    elide_text,
     format_rate,
     gauge_extent,
     scale_series,
@@ -83,3 +84,35 @@ class BarWidthsTests(TestCase):
     def test_ratios_are_clamped_to_the_track(self) -> None:
         """Una proporcion fuera de rango no puede pintar fuera de la barra."""
         self.assertEqual(bar_widths([-0.5, 1.4], 200), [0.0, 200.0])
+
+
+class ElideTextTests(TestCase):
+    """La etiqueta no puede invadir la barra: se recorta con puntos suspensivos."""
+
+    @staticmethod
+    def _measure(text: str) -> int:
+        """Fuente falsa de 10 px por carácter: hace la prueba determinista."""
+        return len(text) * 10
+
+    def test_a_short_label_is_left_untouched(self) -> None:
+        self.assertEqual(elide_text("Ethernet", 200, self._measure), "Ethernet")
+
+    def test_a_long_label_is_cut_with_an_ellipsis(self) -> None:
+        resultado = elide_text("vEthernet (Default Switch)", 120, self._measure)
+
+        self.assertTrue(resultado.endswith("…"))
+        self.assertLessEqual(self._measure(resultado), 120)
+        self.assertTrue("vEthernet".startswith(resultado[:5]))
+
+    def test_the_result_never_exceeds_the_available_width(self) -> None:
+        for ancho in (30, 60, 120, 250):
+            with self.subTest(ancho=ancho):
+                resultado = elide_text("Loopback Pseudo-Interface 1", ancho, self._measure)
+
+                self.assertLessEqual(self._measure(resultado), ancho)
+
+    def test_an_impossibly_narrow_column_yields_no_text_instead_of_garbage(self) -> None:
+        self.assertEqual(elide_text("Ethernet", 5, self._measure), "")
+
+    def test_an_empty_label_stays_empty(self) -> None:
+        self.assertEqual(elide_text("", 100, self._measure), "")
