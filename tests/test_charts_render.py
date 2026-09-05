@@ -124,3 +124,68 @@ class TimeSeriesRenderTests(TestCase):
         ]
         self.assertTrue(lineas, "no se dibujó ninguna serie")
         self.assertGreater(max(coord[-2] for coord in lineas), 100)
+
+
+@skipUnless(TK, "Requiere una sesión gráfica para crear ventanas Tk")
+class ActionSectionTests(TestCase):
+    """Regresion: los apartados que no son componentes deben responder al clic.
+
+    Conectividad, Recomendaciones, Generar reporte, Exportar y Salir no
+    corresponden a ningun ComponentKind. Al pulsarlos no se iluminaba ningun
+    boton y el area principal seguia mostrando la matriz, asi que parecia que
+    el clic no hacia nada.
+    """
+
+    def setUp(self) -> None:
+        from hardware_admin.app_factory import build_scan_service
+        from hardware_admin.ui.main_window import HardwareAdminApp
+
+        self.app = HardwareAdminApp(build_scan_service())
+        self.app.update_idletasks()
+        self.app.update()
+
+    def tearDown(self) -> None:
+        self.app.monitoring_service.stop()
+        self.app.destroy()
+
+    def test_an_action_section_highlights_its_own_button(self) -> None:
+        from hardware_admin.ui import theme
+
+        self.app.run_action("connectivity")
+        self.app.update()
+
+        activo = self.app.nav_buttons["connectivity"]
+        self.assertEqual(activo.cget("fg_color"), theme.ACCENT)
+
+    def test_choosing_an_action_clears_the_previous_highlight(self) -> None:
+        from hardware_admin.domain.models import ComponentKind
+        from hardware_admin.ui import theme
+
+        self.app.select_component(ComponentKind.CPU)
+        self.app.update()
+        self.app.run_action("recommendations")
+        self.app.update()
+
+        self.assertEqual(
+            self.app.nav_buttons[ComponentKind.CPU.value].cget("fg_color"),
+            theme.SURFACE_ALT,
+        )
+
+    def test_an_action_replaces_the_matrix_with_its_own_view(self) -> None:
+        """El cambio debe verse en el area principal, no solo en el titulo."""
+        self.app.run_action("connectivity")
+        self.app.update()
+
+        self.assertTrue(self.app.action_view.winfo_ismapped())
+        self.assertFalse(self.app.workspace.winfo_ismapped())
+
+    def test_returning_to_a_component_restores_the_matrix(self) -> None:
+        from hardware_admin.domain.models import ComponentKind
+
+        self.app.run_action("connectivity")
+        self.app.update()
+        self.app.select_component(ComponentKind.CPU)
+        self.app.update()
+
+        self.assertTrue(self.app.workspace.winfo_ismapped())
+        self.assertFalse(self.app.action_view.winfo_ismapped())

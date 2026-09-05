@@ -608,7 +608,9 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_scope: ComponentKind | None = None
         self.symptom_var = ctk.StringVar()
-        self.nav_buttons: dict[ComponentKind, ctk.CTkButton] = {}
+        # Indexados por clave: el valor del componente o el nombre de la acción.
+        self.nav_buttons: dict[str, ctk.CTkButton] = {}
+        self.active_nav_key = ComponentKind.SYSTEM.value
         self.results_by_kind: dict[ComponentKind, ComponentResult] = {}
         self.cards: dict[ComponentKind, StatusCard] = {}
         self.worker_events: Queue[tuple[str, Any]] = Queue()
@@ -751,8 +753,9 @@ class HardwareAdminApp(ctk.CTk):
                 text_color=theme.TEXT,
             )
             button.grid(row=row, column=0, sticky="ew", pady=3)
-            if component is not None:
-                self.nav_buttons[component] = button
+            self.nav_buttons[component.value if component is not None else entry.action or ""] = (
+                button
+            )
 
         symptom_box = ctk.CTkFrame(sidebar, fg_color="transparent")
         symptom_box.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
@@ -851,14 +854,47 @@ class HardwareAdminApp(ctk.CTk):
             self.cards[kind] = card
 
         workspace = ctk.CTkFrame(content, fg_color="transparent")
+        self.workspace = workspace
         workspace.grid(row=2, column=0, sticky="nsew")
         workspace.grid_rowconfigure(0, weight=1)
         workspace.grid_columnconfigure(0, weight=3, minsize=480)
         workspace.grid_columnconfigure(1, weight=2, minsize=310)
         self._build_diagnostic_column(workspace)
         self._build_evidence_console(workspace)
+        self._build_action_view(content)
         self._build_monitoring_panel(content)
         self._build_section_charts(content)
+
+    def _build_action_view(self, master: Any) -> None:
+        """Área principal de los apartados que no son componentes.
+
+        Ocupa el mismo hueco que la matriz y la sustituye, para que al pulsar
+        Conectividad o Recomendaciones el cambio se vea en el centro de la
+        pantalla y no sólo en el título.
+        """
+        panel = ctk.CTkFrame(
+            master,
+            fg_color=theme.SURFACE,
+            corner_radius=12,
+            border_width=1,
+            border_color=theme.BORDER,
+        )
+        panel.grid(row=2, column=0, sticky="nsew")
+        panel.grid_columnconfigure(0, weight=1)
+        panel.grid_rowconfigure(0, weight=1)
+        self.action_view = panel
+
+        self.action_text = ctk.CTkTextbox(
+            panel,
+            fg_color=theme.TERMINAL,
+            text_color=theme.CONSOLE_TEXT,
+            font=ctk.CTkFont(family="Consolas", size=12),
+            corner_radius=8,
+            wrap="none",
+        )
+        self.action_text.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
+        self.action_text.configure(state="disabled")
+        panel.grid_remove()
 
     def _build_monitoring_panel(self, master: Any) -> None:
         """Panel de E/S en vivo: oculto salvo en el apartado de monitorizacion."""
@@ -1222,20 +1258,26 @@ class HardwareAdminApp(ctk.CTk):
         elif action == "exit":
             self._on_close()
 
-    def _show_action_view(self, title: str, body: str) -> None:
-        """Presenta una vista sin componente: oculta paneles y escribe la ficha."""
+    def _show_action_view(self, action: str, title: str, body: str) -> None:
+        """Presenta un apartado que no es un componente."""
+        self._highlight_nav(action)
         self.section_title.configure(text=title)
         self.monitoring_panel.grid_remove()
         for panel in self.section_panels.values():
             panel.grid_remove()
-        self._set_console(body)
-        self._sync_evidence_window()
+        self.workspace.grid_remove()
+        self.action_view.grid()
+        self.action_text.configure(state="normal")
+        self.action_text.delete("1.0", "end")
+        self.action_text.insert("1.0", body)
+        self.action_text.configure(state="disabled")
 
     def show_report(self) -> None:
         """Vista del reporte completo. No guarda nada: eso es «Exportar»."""
         report = self.report
         if report is None:
             self._show_action_view(
+                "report",
                 "REPORTE DE DIAGNÓSTICO",
                 "Todavía no hay diagnóstico." + NL + NL
                 + "Ejecute «Analizar equipo» o el análisis de una sección concreta.",
@@ -1281,13 +1323,14 @@ class HardwareAdminApp(ctk.CTk):
                 "Use «15. Exportar diagnóstico» para guardar este reporte en disco.",
             ]
         )
-        self._show_action_view("REPORTE DE DIAGNÓSTICO", NL.join(lines))
+        self._show_action_view("report", "REPORTE DE DIAGNÓSTICO", NL.join(lines))
 
     def show_connectivity(self) -> None:
         """Etapas de conectividad ya medidas por el servicio, sin volver a probar."""
         result = self.results_by_kind.get(ComponentKind.NETWORK)
         if result is None:
             self._show_action_view(
+                "connectivity",
                 "CONECTIVIDAD",
                 "Sin datos de conectividad.\n\n"
                 "Ejecute «Analizar equipo» o el análisis de la sección Red para "
@@ -1328,13 +1371,14 @@ class HardwareAdminApp(ctk.CTk):
                 "no es concluyente sin pruebas complementarias.",
             ]
         )
-        self._show_action_view("CONECTIVIDAD", "\n".join(lines))
+        self._show_action_view("connectivity", "CONECTIVIDAD", "\n".join(lines))
 
     def show_recommendations(self) -> None:
         """Todos los procedimientos propuestos, ordenados por gravedad."""
         recommendations = self.report.recommendations if self.report else ()
         if not recommendations:
             self._show_action_view(
+                "recommendations",
                 "RECOMENDACIONES",
                 "No hay recomendaciones.\n\n"
                 "No se detectaron anomalías en los indicadores consultados ni se "
@@ -1360,18 +1404,34 @@ class HardwareAdminApp(ctk.CTk):
                 else "   Sólo consulta: no altera el equipo."
             )
             lines.append("")
-        self._show_action_view("RECOMENDACIONES", "\n".join(lines))
+        self._show_action_view("recommendations", "RECOMENDACIONES", "\n".join(lines))
 
-    def select_component(self, component: ComponentKind) -> None:
-        self.selected_component = component
-        for kind, button in self.nav_buttons.items():
-            chosen = kind is component
+    def _highlight_nav(self, active_key: str) -> None:
+        """Ilumina la entrada activa del menú, sea componente o acción.
+
+        Antes sólo se resaltaban los componentes, así que pulsar Conectividad o
+        Recomendaciones no encendía ningún botón y parecía que el clic se había
+        ignorado.
+        """
+        self.active_nav_key = active_key
+        for entry in NAV_ITEMS:
+            key = entry.component.value if entry.component is not None else entry.action or ""
+            button = self.nav_buttons.get(key)
+            if button is None:
+                continue
+            chosen = key == active_key
             button.configure(
                 fg_color=theme.ACCENT if chosen else theme.SURFACE_ALT,
                 hover_color=theme.ACCENT_HOVER if chosen else theme.SURFACE_HOVER,
-                image=self.icons.get(ICON_NAMES[kind], 20, "#FFFFFF" if chosen else theme.ICON),
+                image=self.icons.get(entry.icon, 20, "#FFFFFF" if chosen else theme.ICON),
                 font=self.nav_font_selected if chosen else self.nav_font,
             )
+
+    def select_component(self, component: ComponentKind) -> None:
+        self.selected_component = component
+        self._highlight_nav(component.value)
+        self.action_view.grid_remove()
+        self.workspace.grid()
         self.matrix.select(component)
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
         # Un unico hueco en la fila 3: el panel en vivo en E/S, y el de
