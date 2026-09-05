@@ -431,6 +431,7 @@ class HardwareAdminApp(ctk.CTk):
         self.selected_component = ComponentKind.SYSTEM
         self.scan_running = False
         self.scan_scope: ComponentKind | None = None
+        self.symptom_var = ctk.StringVar()
         self.nav_buttons: dict[ComponentKind, ctk.CTkButton] = {}
         self.results_by_kind: dict[ComponentKind, ComponentResult] = {}
         self.cards: dict[ComponentKind, StatusCard] = {}
@@ -568,6 +569,29 @@ class HardwareAdminApp(ctk.CTk):
             if component is not None:
                 self.nav_buttons[component] = button
 
+        symptom_box = ctk.CTkFrame(sidebar, fg_color="transparent")
+        symptom_box.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
+        symptom_box.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            symptom_box,
+            text="SÍNTOMA OBSERVADO (OPCIONAL)",
+            font=ctk.CTkFont(size=11, weight="bold"),
+            text_color=theme.ACCENT_TEXT,
+            anchor="w",
+        ).grid(row=0, column=0, sticky="ew")
+        self.symptom_entry = ctk.CTkEntry(
+            symptom_box,
+            textvariable=self.symptom_var,
+            placeholder_text="p. ej. el equipo se reinicia al jugar",
+            height=38,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12),
+            fg_color=theme.SURFACE_ALT,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT,
+        )
+        self.symptom_entry.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+
         self.scan_button = ctk.CTkButton(
             sidebar,
             text="ANALIZAR EQUIPO",
@@ -580,7 +604,7 @@ class HardwareAdminApp(ctk.CTk):
             fg_color=theme.ACCENT,
             hover_color=theme.ACCENT_HOVER,
         )
-        self.scan_button.grid(row=2, column=0, sticky="ew", padx=16, pady=16)
+        self.scan_button.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 16))
 
     def _build_content(self, master: Any) -> None:
         content = ctk.CTkFrame(master, corner_radius=0, fg_color=theme.BACKGROUND)
@@ -837,6 +861,7 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_scope = only
         self.scan_button.configure(text="ANALIZANDO...", state="disabled")
         self.section_button.configure(state="disabled")
+        self.symptom_entry.configure(state="disabled")
         self._set_global_status("busy", "Analizando")
         self.progress_label.configure(text="Iniciando comprobaciones...")
         worker = threading.Thread(
@@ -850,8 +875,13 @@ class HardwareAdminApp(ctk.CTk):
 
     def _run_scan(self, only: ComponentKind | None) -> None:
         scope = None if only is None else frozenset({only})
+        symptom = self.symptom_var.get().strip() or None
         try:
-            report = self.scan_service.scan(on_progress=self._publish_progress, only=scope)
+            report = self.scan_service.scan(
+                on_progress=self._publish_progress,
+                only=scope,
+                symptom=symptom,
+            )
         except Exception as exc:  # noqa: BLE001 - frontera del hilo de trabajo.
             self.worker_events.put(("error", exc))
             return
@@ -881,7 +911,8 @@ class HardwareAdminApp(ctk.CTk):
         results = tuple(
             self.results_by_kind[kind] for kind in COMPONENT_ORDER if kind in self.results_by_kind
         )
-        return self.scan_service.diagnostic_engine.build_report(results)
+        symptom = self.symptom_var.get().strip() or None
+        return self.scan_service.diagnostic_engine.build_report(results, symptom)
 
     def _scan_finished(self, report: DiagnosticReport) -> None:
         for result in report.results:
@@ -891,6 +922,7 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.symptom_entry.configure(state="normal")
 
         checks = len(report.results)
         self.progress_label.configure(
@@ -938,6 +970,7 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.symptom_entry.configure(state="normal")
         self._set_global_status("error", "Error")
         self.progress_label.configure(text="El análisis no pudo completarse")
         messagebox.showerror("Error de análisis", f"No fue posible completar el análisis:\n{error}")

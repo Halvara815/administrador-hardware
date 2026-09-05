@@ -10,6 +10,7 @@ from typing import Any
 
 import psutil
 
+from hardware_admin.diagnostics.rules import CPU_RULE, DISK_RULE, MEMORY_RULE
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -40,14 +41,6 @@ def _now() -> datetime:
 
 def _evidence(source: str, query: str, output: str, succeeded: bool = True) -> EvidenceRecord:
     return EvidenceRecord(source, query, output[:40_000], _now(), succeeded)
-
-
-def _status_for_percent(percent: float, warning: float, critical: float) -> HealthStatus:
-    if percent >= critical:
-        return HealthStatus.CRITICAL
-    if percent >= warning:
-        return HealthStatus.WARNING
-    return HealthStatus.NORMAL
 
 
 def _ps_failure(name: str, component: ComponentKind, query: str, error: str) -> ComponentResult:
@@ -136,7 +129,7 @@ class CpuCollector:
             ),
             "Uso": f"{usage:.1f}%",
         }
-        status = _status_for_percent(usage, 85, 95)
+        status = CPU_RULE.classify(usage)
         problem = "Carga elevada del procesador" if status is not HealthStatus.NORMAL else None
         output = f"psutil.cpu_percent(interval=1)\n{usage:.1f}\n\n" + (
             result.output or result.error
@@ -165,7 +158,7 @@ class MemoryCollector:
             "Porcentaje de uso": f"{memory.percent:.1f}%",
             "Memoria virtual usada": format_bytes(swap.used),
         }
-        status = _status_for_percent(memory.percent, 80, 95)
+        status = MEMORY_RULE.classify(memory.percent)
         problem = "Poca memoria disponible" if status is not HealthStatus.NORMAL else None
         output = (
             "psutil.virtual_memory()\n"
@@ -213,7 +206,7 @@ class DiskCollector:
         result = self.runner.run(PowerShellQuery.DISKS)
         disks = parse_json_rows(result)
         max_usage = max((float(item["UsoNum"]) for item in volumes), default=0.0)
-        status = _status_for_percent(max_usage, 85, 95)
+        status = DISK_RULE.classify(max_usage)
         problem = "Poco espacio disponible" if status is not HealthStatus.NORMAL else None
         clean_volumes = [{k: v for k, v in item.items() if k != "UsoNum"} for item in volumes]
         facts = {"Unidades": clean_volumes, "Discos físicos": disks}

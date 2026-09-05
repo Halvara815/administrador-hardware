@@ -32,6 +32,21 @@ def _render_value(value: Any) -> str:
     return html.escape(str(value))
 
 
+def _context_items(report: DiagnosticReport) -> list[str]:
+    """Devuelve las líneas de contexto del usuario para el reporte HTML."""
+    items: list[str] = []
+    if report.symptom:
+        items.append(
+            f"<li><strong>Síntoma informado:</strong> {html.escape(report.symptom)}</li>"
+        )
+    if report.expected_device:
+        items.append(
+            "<li><strong>Dispositivo esperado:</strong> "
+            f"{html.escape(report.expected_device)}</li>"
+        )
+    return items
+
+
 def export_html(report: DiagnosticReport, destination: str | Path) -> Path:
     path = Path(destination)
     matrix_rows = []
@@ -61,6 +76,12 @@ def export_html(report: DiagnosticReport, destination: str | Path) -> Path:
         )
 
     limitations = "".join(f"<li>{html.escape(item)}</li>" for item in report.limitations)
+    context_items = list(_context_items(report))
+    context_section = (
+        f"<section><h2>Contexto del usuario</h2><ul>{''.join(context_items)}</ul></section>"
+        if context_items
+        else ""
+    )
     document = f"""<!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -83,6 +104,7 @@ color:#d9e6f5;padding:16px;border-radius:8px;max-height:420px;overflow:auto}}
 <th>Evidencia</th><th>Estado</th><th>Posible problema</th></tr></thead>
 <tbody>{"".join(matrix_rows)}</tbody></table></section>
 <section class="conclusion"><h2>Conclusión</h2><p>{html.escape(report.conclusion)}</p></section>
+{context_section}
 {f"<section><h2>Limitaciones</h2><ul>{limitations}</ul></section>" if limitations else ""}
 {"".join(detail_sections)}
 </main></body></html>"""

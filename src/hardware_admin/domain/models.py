@@ -57,10 +57,21 @@ class DiagnosticReport:
     results: tuple[ComponentResult, ...]
     conclusion: str
     limitations: tuple[str, ...] = field(default_factory=tuple)
+    #: Contexto opcional aportado por el usuario. El síntoma se trata como dato,
+    #: nunca como instrucción; obliga a proponer diagnóstico adicional si todo
+    #: el análisis básico figura sin anomalías (caso C5 del enunciado).
+    symptom: str | None = None
+    #: Dispositivo que el usuario espera detectar; ausencia no se confunde
+    #: con salud física ni se usa para condenar un bus completo.
+    expected_device: str | None = None
 
     @property
     def has_problems(self) -> bool:
-        """Indica si existe al menos una advertencia o problema confirmado."""
+        """Indica si existe al menos una advertencia o problema confirmado.
+
+        Un `ERROR` de consulta no equivale a `CRITICAL`: la falta de evidencia
+        nunca se interpreta aquí como hardware dañado (se expone en limitaciones).
+        """
         return any(
             result.status in {HealthStatus.WARNING, HealthStatus.CRITICAL}
             for result in self.results

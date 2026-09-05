@@ -1,9 +1,9 @@
 # Hardware Diagnostic & Repair Assistant — plan del nuevo enunciado
 
-Fecha: 2026-09-04. Estado: **DISEÑO DOCUMENTAL; IMPLEMENTACIÓN NO INICIADA**.
+Fecha: 2026-09-04. Estado: **FASE 1 COMPLETADA; resto del plan sin implementar**.
 Fuente: enunciado del docente, secciones 1–46, adjuntado por el usuario.
 Este plan sustituye la prioridad comercial anterior. La app v0.1.0 permanece funcional.
-El desarrollo comenzará cuando el usuario lo indique.
+El desarrollo continúa cuando el usuario lo indique.
 
 Investigación adicional solicitada: [fuentes técnicas y asesor de IA](docs/RESEARCH_AI_HARDWARE.md).
 Propone recomendaciones verificables de drivers y RAM con referencias oficiales.
@@ -217,15 +217,16 @@ en logs ordinarios. Exportación incluye equipo y usuario por requisito docente:
 advertirlo y anonimizar copias compartidas como evidencias. No habrá telemetría remota.
 Recuperación: reiniciar app y repetir análisis; los reportes exportados no se borran.
 
-## Fases ejecutables futuras
+## Fases ejecutables
 
-Todas están **NO INICIADAS**. Cada fase debe completar medición → regla → UI →
-reporte → prueba correspondiente antes de avanzar; no crear carpetas vacías masivamente.
+La Fase 1 está completada; las demás están **NO INICIADAS**. Cada fase debe
+completar medición → regla → UI → reporte → prueba correspondiente antes de
+avanzar; no crear carpetas vacías masivamente.
 
 | Fase | Cambio y módulos | Pruebas/aceptación | Recuperación |
 |---|---|---|---|
 | 0 | Baseline, rama, fixtures; docs/tests | Capturar versión, ejecutar gates actuales y guardar artefacto/hash | Recuperar commit y ZIP académico |
-| 1 | domain, rules, engine, UI | Umbrales decimales/bordes; ERROR distinto de CRÍTICO; síntoma y C5 | Campos nuevos opcionales; revertir slice |
+| 1 | domain, rules, engine, UI — **COMPLETADA** | Umbrales decimales/bordes; ERROR distinto de CRÍTICO; síntoma y C5 — gates pytest/ruff/mypy en verde | Campos nuevos opcionales; revertir slice |
 | 2 | commands, network, connectivity, UI | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada | Omitir pruebas externas y conservar datos locales |
 | 3 | pnp, drivers, storage, gpu | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma | Conservar core.py hasta paridad |
 | 4 | monitoring, recommendations, UI | C4 y casos individuales; buffer/parada; 15 opciones+Salir | Cancelar tareas y volver a última UI estable |

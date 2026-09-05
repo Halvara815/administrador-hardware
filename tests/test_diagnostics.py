@@ -93,3 +93,40 @@ class DiagnosticEngineTests(TestCase):
         self.assertIn("memoria RAM (92% de uso)", report.conclusion)
         self.assertIn("USB", report.conclusion)
         self.assertIn("monitor_gpu", report.conclusion)
+
+    def test_error_is_not_a_hardware_problem_but_critical_is(self) -> None:
+        error_report = RuleBasedDiagnosticEngine().build_report(
+            (result_for(ComponentKind.PCI, HealthStatus.ERROR, "Error de consulta"),)
+        )
+        critical_report = RuleBasedDiagnosticEngine().build_report(
+            (result_for(ComponentKind.PCI, HealthStatus.CRITICAL, "Código 43"),)
+        )
+
+        self.assertFalse(error_report.has_problems)
+        self.assertTrue(critical_report.has_problems)
+
+    def test_all_ok_with_persistent_symptom_forces_deeper_diagnosis(self) -> None:
+        report = RuleBasedDiagnosticEngine().build_report(
+            (
+                result_for(ComponentKind.CPU, HealthStatus.NORMAL, "35% de uso"),
+                result_for(ComponentKind.MEMORY, HealthStatus.NORMAL, "42% de uso"),
+                result_for(ComponentKind.DISK, HealthStatus.NORMAL, "55% ocupado"),
+                result_for(ComponentKind.MONITOR_GPU, HealthStatus.NORMAL, "GPU OK"),
+            ),
+            symptom="el equipo se reinicia al jugar",
+        )
+
+        self.assertFalse(report.has_problems)
+        self.assertEqual(report.symptom, "el equipo se reinicia al jugar")
+        self.assertIn("sin anomalías básicas", report.conclusion)
+        self.assertIn("temperatura", report.conclusion)
+        self.assertIn("fuente de alimentación", report.conclusion)
+        self.assertIn("GPU", report.conclusion)
+
+    def test_symptom_without_anomalies_uses_precise_wording(self) -> None:
+        report = RuleBasedDiagnosticEngine().build_report(
+            (result_for(ComponentKind.SYSTEM, HealthStatus.NORMAL, "Sistema OK"),)
+        )
+
+        self.assertIn("No se observan anomalías en los indicadores consultados", report.conclusion)
+        self.assertNotIn("sin problemas", report.conclusion)

@@ -64,3 +64,15 @@ class ScanServiceTests(TestCase):
         report = service.scan(only=frozenset({ComponentKind.DISK}))
 
         self.assertEqual(report.results, ())
+
+    def test_symptom_is_kept_in_the_final_report(self) -> None:
+        service = ScanService(
+            collectors=(GoodCollector(),),
+            diagnostic_engine=RuleBasedDiagnosticEngine(),
+        )
+
+        report = service.scan(symptom="se reinicia al jugar", expected_device="SSD")
+
+        self.assertEqual(report.symptom, "se reinicia al jugar")
+        self.assertEqual(report.expected_device, "SSD")
+        self.assertIn("diagnóstico adicional", report.conclusion)

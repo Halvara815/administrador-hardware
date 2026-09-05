@@ -30,11 +30,15 @@ class ScanService:
         self,
         on_progress: ProgressCallback | None = None,
         only: Container[ComponentKind] | None = None,
+        symptom: str | None = None,
+        expected_device: str | None = None,
     ) -> DiagnosticReport:
         """Ejecuta recolectores y entrega un reporte normalizado.
 
         Con `only` se analiza un subconjunto de componentes en lugar del equipo
-        completo; el reporte resultante sólo contiene esos resultados.
+        completo; el reporte resultante sólo contiene esos resultados. El síntoma
+        y el dispositivo esperado son contexto opcional del usuario y se tratan
+        como datos, nunca como instrucciones.
         """
         selected = tuple(
             collector
@@ -43,7 +47,9 @@ class ScanService:
         )
         total = len(selected)
         if total == 0:
-            return self.diagnostic_engine.build_report(())
+            return self.diagnostic_engine.build_report(
+                (), symptom, expected_device
+            )
 
         ordered_results: dict[int, ComponentResult] = {}
         workers = min(4, total)
@@ -60,7 +66,7 @@ class ScanService:
                     on_progress(completed_count, total, result.name)
 
         results = tuple(ordered_results[index] for index in range(total))
-        return self.diagnostic_engine.build_report(results)
+        return self.diagnostic_engine.build_report(results, symptom, expected_device)
 
     @staticmethod
     def _collect_safely(collector: HardwareCollector) -> ComponentResult:

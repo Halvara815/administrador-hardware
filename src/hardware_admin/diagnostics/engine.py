@@ -12,7 +12,12 @@ from hardware_admin.domain.models import (
 
 
 class RuleBasedDiagnosticEngine:
-    def build_report(self, results: Sequence[ComponentResult]) -> DiagnosticReport:
+    def build_report(
+        self,
+        results: Sequence[ComponentResult],
+        symptom: str | None = None,
+        expected_device: str | None = None,
+    ) -> DiagnosticReport:
         now = datetime.now(UTC)
         evidence_dates = [
             evidence.collected_at for result in results for evidence in result.evidence
@@ -65,11 +70,22 @@ class RuleBasedDiagnosticEngine:
             )
         if not alerts:
             conclusion_parts.append(
-                "No se detectaron problemas de hardware con los indicadores disponibles."
+                "No se observan anomalías en los indicadores consultados."
             )
         if failures:
             conclusion_parts.append(
                 "Algunas comprobaciones no pudieron completarse y no deben interpretarse como sanas."
+            )
+        if symptom and not alerts and not failures:
+            conclusion_parts.append(
+                "Como el síntoma persiste sin anomalías básicas, se requiere "
+                "diagnóstico adicional de temperatura, fuente de alimentación, GPU, "
+                "controladores, eventos del sistema, memoria RAM y el resto del hardware."
+            )
+        if expected_device and not alerts:
+            conclusion_parts.append(
+                f"El dispositivo esperado («{expected_device}») no se usó para "
+                "condenar ningún bus: su ausencia requiere confirmación por ID."
             )
 
         limitations = tuple(
@@ -82,4 +98,6 @@ class RuleBasedDiagnosticEngine:
             results=tuple(results),
             conclusion=" ".join(conclusion_parts),
             limitations=limitations,
+            symptom=symptom,
+            expected_device=expected_device,
         )
