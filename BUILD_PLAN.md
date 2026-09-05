@@ -1,6 +1,6 @@
 # Hardware Diagnostic & Repair Assistant — plan de producto
 
-Fecha: 2026-09-04. Estado: **FASES 1, 2 Y 3 COMPLETADAS; resto del plan sin implementar**.
+Fecha: 2026-09-05. Estado: **FASES 1, 2 Y 3 COMPLETADAS; fase 4 en curso (rebanada 4A hecha); resto del plan sin implementar**.
 Proyecto personal con evolución comercial. Se conserva la aplicación funcional y se amplía por fases.
 El desarrollo continúa cuando el usuario lo indique.
 
@@ -249,12 +249,23 @@ avanzar; no crear carpetas vacías masivamente.
 | 1 | domain, rules, engine, UI — **COMPLETADA** | Umbrales decimales/bordes; ERROR distinto de CRÍTICO; síntoma y C5 — gates pytest/ruff/mypy en verde | Campos nuevos opcionales; revertir slice |
 | 2 | commands, network, connectivity, UI — **COMPLETADA** | Tres rutas Python–Windows; DNS, APIPA y C1; sin inyección ni UI bloqueada — gates pytest/ruff/mypy en verde | Omitir pruebas externas y conservar datos locales |
 | 3 | pnp, drivers, storage, gpu — **COMPLETADA** | IDs correlacionados; C2/C3; Get-PhysicalDisk/Volume; GPU con síntoma — gates pytest/ruff/mypy en verde | Conservar core.py hasta paridad |
-| 4 | monitoring, charts por apartados, recommendations, UI | Gráficos visuales integrados en apartados (CPU, RAM, Discos, Red, E/S); buffer/parada; 15 opciones+Salir | Cancelar tareas y volver a última UI estable |
+| 4A | monitoring_service, ui/charts, panel de E/S — **COMPLETADA** | Buffer 300 y parada explícita; series de disco y red en vivo; gates pytest/ruff/mypy en verde | Retirar los dos módulos nuevos y el panel |
+| 4B | Gráficos de CPU, RAM, discos y red desde `ComponentResult.facts` | Un gráfico por apartado, sin dependencias nuevas | Ocultar el gráfico y conservar la tabla |
+| 4C | diagnostics/recommendations | Causa, pasos ordenados, fundamento y comprobación posterior | Mostrar sólo el problema posible |
+| 4D | Menú de 15 opciones y Salir | Conectividad, Monitorización, Recomendaciones y Exportar; cierre ordenado | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT, general | Esquema completo, UTF-8, fecha/equipo/usuario, límites y recomendaciones | HTML anterior disponible; no tocar reportes previos |
 | 6 | Documentación de producto | Guía de uso, límites, referencias, soporte y pruebas reales | Mantener documentación versionada |
 | 7 | packaging, distribución, README | EXE sin Python instalado, paquete verificable y recorrido completo | Última versión verificada |
 
 ### Especificación técnica del apartado de gráficos (Fase 4)
+
+La fase 4 se ejecuta por rebanadas. La **4A** está implementada: el servicio
+`monitoring_service` posee la serie acotada de 300 muestras con arranque y
+parada explícitos, y `ui/charts` la dibuja en dos gráficos apilados de escala
+independiente dentro del apartado de E/S. Disco y red no comparten eje porque
+sus tasas difieren en órdenes de magnitud. Diseño y plan en
+[docs/superpowers](docs/superpowers/specs/2026-09-05-monitorizacion-en-vivo-design.md).
+Las rebanadas 4B, 4C y 4D siguen **sin implementar**.
 
 Los gráficos interactivos y de diagnóstico se integran en la **Fase 4** como parte de la modernización de la UI y el servicio de monitorización, respetando estrictamente los principios arquitectónicos del proyecto:
 

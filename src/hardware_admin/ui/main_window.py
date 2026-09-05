@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -23,8 +23,14 @@ from hardware_admin.domain.models import (
 )
 from hardware_admin.reports.html_report import export_html
 from hardware_admin.resources import resource_path
+from hardware_admin.services.monitoring_service import (
+    MonitoringService,
+    PsutilRateSampler,
+    Sample,
+)
 from hardware_admin.services.scan_service import ScanService
 from hardware_admin.ui import icons, theme
+from hardware_admin.ui.charts import SeriesSpec, TimeSeriesChart, format_rate
 
 STATUS_LABELS = {
     HealthStatus.UNKNOWN: "Sin analizar",
@@ -81,6 +87,29 @@ MATRIX_COLUMNS: tuple[tuple[str, int, int], ...] = (
     ("Estado", 18, 105),
     ("Posible problema", 31, 150),
 )
+
+
+#: Series de cada grafico de monitorizacion, en orden de dibujo.
+MONITORING_DISK_SPECS: tuple[SeriesSpec, ...] = (
+    SeriesSpec("Lectura", theme.ACCENT_TEXT),
+    SeriesSpec("Escritura", theme.YELLOW),
+)
+MONITORING_NET_SPECS: tuple[SeriesSpec, ...] = (
+    SeriesSpec("Envío", theme.GREEN),
+    SeriesSpec("Recepción", "#56D4DD"),
+)
+
+
+def series_for(
+    samples: Sequence[Sample],
+) -> tuple[list[float], list[float], list[float], list[float]]:
+    """Separa las muestras en las cuatro series que dibujan los graficos."""
+    return (
+        [item.disk_read_bps for item in samples],
+        [item.disk_write_bps for item in samples],
+        [item.net_sent_bps for item in samples],
+        [item.net_recv_bps for item in samples],
+    )
 
 
 def _format_value(value: Any, indent: str = "") -> str:
@@ -422,11 +451,19 @@ class EvidenceWindow(ctk.CTkToplevel):
 
 
 class HardwareAdminApp(ctk.CTk):
-    def __init__(self, scan_service: ScanService) -> None:
+    def __init__(
+        self,
+        scan_service: ScanService,
+        monitoring_service: MonitoringService | None = None,
+    ) -> None:
         ctk.set_appearance_mode("dark")
         ctk.set_default_color_theme("blue")
         super().__init__(fg_color=theme.BACKGROUND)
         self.scan_service = scan_service
+        self.monitoring_service = monitoring_service or MonitoringService(
+            sampler=PsutilRateSampler()
+        )
+        self.monitoring_job: str | None = None
         self.report: DiagnosticReport | None = None
         self.selected_component = ComponentKind.SYSTEM
         self.scan_running = False
@@ -454,6 +491,7 @@ class HardwareAdminApp(ctk.CTk):
         self._build_body()
         self._render_initial_matrix()
         self.select_component(ComponentKind.SYSTEM)
+        self.protocol("WM_DELETE_WINDOW", self._on_close)
 
     def _build_header(self) -> None:
         header = ctk.CTkFrame(self, height=100, corner_radius=0, fg_color=theme.BACKGROUND)
@@ -672,6 +710,117 @@ class HardwareAdminApp(ctk.CTk):
         workspace.grid_columnconfigure(1, weight=2, minsize=310)
         self._build_diagnostic_column(workspace)
         self._build_evidence_console(workspace)
+        self._build_monitoring_panel(content)
+
+    def _build_monitoring_panel(self, master: Any) -> None:
+        """Panel de E/S en vivo: oculto salvo en el apartado de monitorizacion."""
+        panel = ctk.CTkFrame(master, fg_color="transparent")
+        panel.grid(row=3, column=0, sticky="ew", pady=(16, 0))
+        panel.grid_columnconfigure(0, weight=1)
+        self.monitoring_panel = panel
+
+        controls = ctk.CTkFrame(panel, fg_color="transparent")
+        controls.grid(row=0, column=0, sticky="ew", pady=(0, 10))
+        controls.grid_columnconfigure(3, weight=1)
+        self.monitoring_start_button = ctk.CTkButton(
+            controls,
+            text="Iniciar",
+            command=self.start_monitoring,
+            width=110,
+            height=32,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+        )
+        self.monitoring_start_button.grid(row=0, column=0)
+        self.monitoring_stop_button = ctk.CTkButton(
+            controls,
+            text="Detener",
+            command=self.stop_monitoring,
+            width=110,
+            height=32,
+            corner_radius=8,
+            state="disabled",
+            font=ctk.CTkFont(size=12),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT,
+        )
+        self.monitoring_stop_button.grid(row=0, column=1, padx=8)
+        self.monitoring_clear_button = ctk.CTkButton(
+            controls,
+            text="Limpiar",
+            command=self.clear_monitoring,
+            width=110,
+            height=32,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.TEXT,
+        )
+        self.monitoring_clear_button.grid(row=0, column=2)
+        self.monitoring_status = ctk.CTkLabel(
+            controls,
+            text="Detenido · 0 muestras",
+            text_color=theme.MUTED,
+            font=ctk.CTkFont(size=11),
+        )
+        self.monitoring_status.grid(row=0, column=3, sticky="e")
+
+        self.disk_chart = TimeSeriesChart(panel, "DISCO", MONITORING_DISK_SPECS)
+        self.disk_chart.grid(row=1, column=0, sticky="ew", pady=(0, 10))
+        self.net_chart = TimeSeriesChart(panel, "RED", MONITORING_NET_SPECS)
+        self.net_chart.grid(row=2, column=0, sticky="ew")
+        panel.grid_remove()
+
+    def start_monitoring(self) -> None:
+        self.monitoring_service.start()
+        self.monitoring_start_button.configure(state="disabled")
+        self.monitoring_stop_button.configure(state="normal")
+        self._refresh_monitoring()
+
+    def stop_monitoring(self) -> None:
+        self.monitoring_service.stop()
+        self.monitoring_start_button.configure(state="normal")
+        self.monitoring_stop_button.configure(state="disabled")
+        if self.monitoring_job is not None:
+            self.after_cancel(self.monitoring_job)
+            self.monitoring_job = None
+        self._draw_monitoring()
+
+    def clear_monitoring(self) -> None:
+        self.monitoring_service.clear()
+        self._draw_monitoring()
+
+    def _refresh_monitoring(self) -> None:
+        """Redibuja mientras haya muestreo. Solo corre en el hilo principal."""
+        self._draw_monitoring()
+        if self.monitoring_service.is_running:
+            self.monitoring_job = self.after(1000, self._refresh_monitoring)
+
+    def _draw_monitoring(self) -> None:
+        samples = self.monitoring_service.snapshot()
+        read, write, sent, recv = series_for(samples)
+        summary = self.monitoring_service.summary()
+        disk_peak = max(summary.disk_read.peak, summary.disk_write.peak)
+        net_peak = max(summary.net_sent.peak, summary.net_recv.peak)
+        self.disk_chart.update_series((read, write), f"pico {format_rate(disk_peak)}")
+        self.net_chart.update_series((sent, recv), f"pico {format_rate(net_peak)}")
+        state = "Muestreando" if self.monitoring_service.is_running else "Detenido"
+        self.monitoring_status.configure(
+            text=f"{state} · {len(samples)}/{self.monitoring_service.capacity} muestras · 1 s"
+        )
+
+    def _on_close(self) -> None:
+        """Detiene el muestreo antes de cerrar para no dejar el hilo colgado."""
+        self.monitoring_service.stop()
+        self.destroy()
 
     def _build_diagnostic_column(self, master: Any) -> None:
         left = ctk.CTkFrame(master, fg_color="transparent")
@@ -851,6 +1000,12 @@ class HardwareAdminApp(ctk.CTk):
             )
         self.matrix.select(component)
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
+        # El panel en vivo solo tiene sentido en el apartado de E/S.
+        if component is ComponentKind.IO:
+            self.monitoring_panel.grid()
+            self._draw_monitoring()
+        else:
+            self.monitoring_panel.grid_remove()
         self._show_selected_evidence()
 
     def start_scan(self, only: ComponentKind | None = None) -> None:
