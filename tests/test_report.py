@@ -74,3 +74,31 @@ class HtmlReportTests(TestCase):
             content = path.read_text(encoding="utf-8")
 
         self.assertNotIn("Contexto del usuario", content)
+
+
+class MachineReadableFactsTests(TestCase):
+    def test_underscored_keys_are_series_for_charts_not_report_text(self) -> None:
+        """Las claves con _ son datos para graficar: no deben salir en el reporte."""
+        result = ComponentResult(
+            component=ComponentKind.CPU,
+            name="CPU",
+            facts={"Uso": "42.0%", "_uso": 42.0, "_nucleos": [10.0, 74.0]},
+            summary="42% de uso",
+            status=HealthStatus.NORMAL,
+            evidence=(EvidenceRecord("psutil", "cpu", "salida", datetime.now(UTC)),),
+        )
+        report = DiagnosticReport(
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            results=(result,),
+            conclusion="Sin anomalías en los indicadores consultados.",
+        )
+
+        with TemporaryDirectory() as directory:
+            path = export_html(report, f"{directory}/reporte.html")
+            html_text = path.read_text(encoding="utf-8")
+
+        self.assertIn("Uso", html_text)
+        self.assertIn("42.0%", html_text)
+        self.assertNotIn("_uso", html_text)
+        self.assertNotIn("_nucleos", html_text)

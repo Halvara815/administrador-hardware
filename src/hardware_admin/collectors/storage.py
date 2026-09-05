@@ -58,6 +58,8 @@ class StorageCollector:
                     "Disponible": format_bytes(usage.free),
                     "Uso": f"{usage.percent:.1f}%",
                     "UsoNum": usage.percent,
+                    "UsadoBytes": float(usage.used),
+                    "LibreBytes": float(usage.free),
                 }
             )
 
@@ -144,7 +146,10 @@ class StorageCollector:
                 "comprobar el formato o probar en otro puerto. El bus USB no queda condenado."
             )
 
-        clean_volumes = [{k: v for k, v in item.items() if k != "UsoNum"} for item in volumes]
+        internal = {"UsoNum", "UsadoBytes", "LibreBytes"}
+        clean_volumes = [
+            {k: v for k, v in item.items() if k not in internal} for item in volumes
+        ]
         facts: dict[str, Any] = {
             "Unidades": clean_volumes,
             "Discos físicos": norm_physical if norm_physical else disks,
@@ -164,6 +169,16 @@ class StorageCollector:
             ]
         if usb_case:
             facts["Caso"] = usb_case
+        # Serie para el grafico de barras apiladas por unidad.
+        facts["_volumenes"] = [
+            {
+                "unidad": str(item["Unidad"]),
+                "usado": float(item["UsadoBytes"]),
+                "libre": float(item["LibreBytes"]),
+                "porcentaje": float(item["UsoNum"]),
+            }
+            for item in volumes
+        ]
 
         volume_text = "\n".join(
             f"{v['Unidad']} | {v['Sistema']} | {v['Capacidad']} | Uso {v['Uso']}"

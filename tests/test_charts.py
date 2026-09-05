@@ -2,7 +2,13 @@
 
 from unittest import TestCase
 
-from hardware_admin.ui.charts import format_rate, scale_series
+from hardware_admin.ui.charts import (
+    GAUGE_SWEEP,
+    bar_widths,
+    format_rate,
+    gauge_extent,
+    scale_series,
+)
 
 
 class ScaleSeriesTests(TestCase):
@@ -49,3 +55,31 @@ class FormatRateTests(TestCase):
     def test_a_negative_rate_is_reported_as_zero(self) -> None:
         """Una tasa negativa no existe: se reporta como cero, no con signo."""
         self.assertEqual(format_rate(-5.0), "0.0 B/s")
+
+
+class GaugeExtentTests(TestCase):
+    def test_zero_percent_draws_no_arc(self) -> None:
+        self.assertEqual(gauge_extent(0.0), 0.0)
+
+    def test_full_percent_draws_the_whole_sweep(self) -> None:
+        self.assertEqual(gauge_extent(100.0), -GAUGE_SWEEP)
+
+    def test_half_percent_draws_half_the_sweep(self) -> None:
+        self.assertAlmostEqual(gauge_extent(50.0), -GAUGE_SWEEP / 2)
+
+    def test_out_of_range_values_stay_inside_the_arc(self) -> None:
+        """Un porcentaje imposible no debe desbordar el dibujo."""
+        self.assertEqual(gauge_extent(-10.0), 0.0)
+        self.assertEqual(gauge_extent(140.0), -GAUGE_SWEEP)
+
+
+class BarWidthsTests(TestCase):
+    def test_no_bars_produce_no_widths(self) -> None:
+        self.assertEqual(bar_widths([], 200), [])
+
+    def test_ratios_map_to_proportional_widths(self) -> None:
+        self.assertEqual(bar_widths([0.0, 0.5, 1.0], 200), [0.0, 100.0, 200.0])
+
+    def test_ratios_are_clamped_to_the_track(self) -> None:
+        """Una proporcion fuera de rango no puede pintar fuera de la barra."""
+        self.assertEqual(bar_widths([-0.5, 1.4], 200), [0.0, 200.0])

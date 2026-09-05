@@ -61,9 +61,12 @@ def export_html(report: DiagnosticReport, destination: str | Path) -> Path:
             f"<td>{html.escape(result.possible_problem or '—')}</td>"
             "</tr>"
         )
+        # Las claves con guion bajo son series numericas para los graficos:
+        # datos legibles por maquina, no texto del reporte.
         facts = "".join(
             f"<tr><th>{html.escape(str(key))}</th><td>{_render_value(value)}</td></tr>"
             for key, value in result.facts.items()
+            if not str(key).startswith("_")
         )
         evidence = "\n\n".join(
             f"> {item.source}: {item.query}\n{item.output}" for item in result.evidence
