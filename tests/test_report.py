@@ -8,6 +8,7 @@ from hardware_admin.domain.models import (
     DiagnosticReport,
     EvidenceRecord,
     HealthStatus,
+    Recommendation,
 )
 from hardware_admin.reports.html_report import export_html
 
@@ -102,3 +103,78 @@ class MachineReadableFactsTests(TestCase):
         self.assertIn("42.0%", html_text)
         self.assertNotIn("_uso", html_text)
         self.assertNotIn("_nucleos", html_text)
+
+
+class RecommendationSectionTests(TestCase):
+    def _report_with(self, *recommendations: Recommendation) -> str:
+        report = DiagnosticReport(
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            results=(
+                ComponentResult(
+                    component=ComponentKind.CPU,
+                    name="CPU",
+                    facts={"Uso": "98.0%"},
+                    summary="98% de uso",
+                    status=HealthStatus.CRITICAL,
+                    evidence=(EvidenceRecord("psutil", "cpu", "salida", datetime.now(UTC)),),
+                ),
+            ),
+            conclusion="Carga elevada.",
+            recommendations=recommendations,
+        )
+        with TemporaryDirectory() as directory:
+            return export_html(report, f"{directory}/reporte.html").read_text(encoding="utf-8")
+
+    def test_the_report_lists_steps_cause_rationale_and_verification(self) -> None:
+        html_text = self._report_with(
+            Recommendation(
+                component=ComponentKind.CPU,
+                title="Revisar la carga del procesador",
+                cause="El uso de CPU está en 98%.",
+                steps=("Abrir el Administrador de tareas.", "Ordenar por CPU."),
+                rationale="Una carga sostenida degrada la respuesta.",
+                verification="Repetir el análisis.",
+            )
+        )
+
+        self.assertIn("Revisar la carga del procesador", html_text)
+        self.assertIn("Abrir el Administrador de tareas.", html_text)
+        self.assertIn("Ordenar por CPU.", html_text)
+        self.assertIn("Una carga sostenida degrada la respuesta.", html_text)
+        self.assertIn("Repetir el análisis.", html_text)
+
+    def test_procedures_that_alter_the_machine_are_marked_in_the_report(self) -> None:
+        """El lector debe ver qué va a cambiar antes de escribir el comando."""
+        html_text = self._report_with(
+            Recommendation(
+                component=ComponentKind.NETWORK,
+                title="Recuperar la concesión DHCP",
+                cause="Dirección APIPA.",
+                steps=("Ejecutar «ipconfig /renew».",),
+                rationale="No respondió ningún DHCP.",
+                verification="Comprobar que obtiene IP.",
+                modifies_system=True,
+            )
+        )
+
+        self.assertIn("Modifica el sistema", html_text)
+
+    def test_a_report_without_recommendations_omits_the_section(self) -> None:
+        self.assertNotIn("Recomendaciones", self._report_with())
+
+    def test_recommendation_content_is_escaped(self) -> None:
+        """El contenido se escapa: nada de HTML crudo en el reporte."""
+        html_text = self._report_with(
+            Recommendation(
+                component=ComponentKind.CPU,
+                title="<script>alert(1)</script>",
+                cause="causa",
+                steps=("paso",),
+                rationale="fundamento",
+                verification="comprobación",
+            )
+        )
+
+        self.assertNotIn("<script>alert(1)</script>", html_text)
+        self.assertIn("&lt;script&gt;", html_text)

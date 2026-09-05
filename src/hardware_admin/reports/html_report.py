@@ -50,6 +50,31 @@ def _context_items(report: DiagnosticReport) -> list[str]:
 def export_html(report: DiagnosticReport, destination: str | Path) -> Path:
     path = Path(destination)
     matrix_rows = []
+    recommendation_blocks = []
+    for item in report.recommendations:
+        steps = "".join(f"<li>{html.escape(step)}</li>" for step in item.steps)
+        # Advertir de lo que altera el equipo: la aplicacion lo propone,
+        # nunca lo ejecuta, y el lector debe saberlo antes de escribirlo.
+        badge = (
+            "<p><strong>Modifica el sistema.</strong> La aplicación no ejecuta este "
+            "procedimiento: descríbalo antes de aplicarlo usted mismo.</p>"
+            if item.modifies_system
+            else "<p><small>Sólo consulta: no altera el equipo.</small></p>"
+        )
+        recommendation_blocks.append(
+            f"<article><h3>{html.escape(item.title)}</h3>"
+            f"<p><strong>Causa:</strong> {html.escape(item.cause)}</p>"
+            f"<ol>{steps}</ol>"
+            f"<p><strong>Fundamento:</strong> {html.escape(item.rationale)}</p>"
+            f"<p><strong>Comprobación posterior:</strong> {html.escape(item.verification)}</p>"
+            f"{badge}</article>"
+        )
+    recommendation_section = (
+        f"<section><h2>Recomendaciones</h2>{''.join(recommendation_blocks)}</section>"
+        if recommendation_blocks
+        else ""
+    )
+
     detail_sections = []
     for result in report.results:
         status = _STATUS_LABELS[result.status]
@@ -99,6 +124,8 @@ th,td{{padding:10px;border-bottom:1px solid #dfe7f1;text-align:left;vertical-ali
 .critical,.error{{color:#b42318;font-weight:700}} pre{{white-space:pre-wrap;background:#09111c;
 color:#d9e6f5;padding:16px;border-radius:8px;max-height:420px;overflow:auto}}
 .conclusion{{border-left:5px solid #1478e8}} small{{color:#607086}}
+article{{border-left:4px solid #1478e8;padding:4px 0 4px 16px;margin:18px 0}}
+article h3{{margin:0 0 8px;color:#0b5fc6}} article ol{{margin:8px 0;padding-left:22px}}
 @media print{{body{{background:white}} header,section{{box-shadow:none;border:1px solid #ddd}}}}
 </style></head><body><main>
 <header><h1>Administrador de Hardware</h1><p>Reporte de diagnóstico · versión {__version__}</p>
@@ -108,6 +135,7 @@ color:#d9e6f5;padding:16px;border-radius:8px;max-height:420px;overflow:auto}}
 <tbody>{"".join(matrix_rows)}</tbody></table></section>
 <section class="conclusion"><h2>Conclusión</h2><p>{html.escape(report.conclusion)}</p></section>
 {context_section}
+{recommendation_section}
 {f"<section><h2>Limitaciones</h2><ul>{limitations}</ul></section>" if limitations else ""}
 {"".join(detail_sections)}
 </main></body></html>"""
