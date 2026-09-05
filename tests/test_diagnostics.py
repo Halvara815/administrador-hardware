@@ -262,3 +262,38 @@ class DiagnosticEngineTests(TestCase):
         self.assertIn("DirectX", report.conclusion)
         self.assertIn("gráficos por aplicación", report.conclusion)
         self.assertIn("controladores", report.conclusion)
+
+
+class EngineRecommendationTests(TestCase):
+    def test_the_report_carries_recommendations_for_each_anomaly(self) -> None:
+        report = RuleBasedDiagnosticEngine().build_report(
+            (
+                result_for(ComponentKind.CPU, HealthStatus.CRITICAL, "98% de uso"),
+                result_for(ComponentKind.DISK, HealthStatus.NORMAL, "30% ocupado"),
+            )
+        )
+
+        self.assertEqual(len(report.recommendations), 1)
+        self.assertEqual(report.recommendations[0].component, ComponentKind.CPU)
+
+    def test_a_clean_report_carries_no_recommendations(self) -> None:
+        report = RuleBasedDiagnosticEngine().build_report(
+            (result_for(ComponentKind.CPU, HealthStatus.NORMAL, "20% de uso"),)
+        )
+
+        self.assertEqual(report.recommendations, ())
+
+    def test_procedures_that_alter_the_machine_are_flagged(self) -> None:
+        """La app propone ipconfig /renew; nunca lo ejecuta."""
+        net = ComponentResult(
+            component=ComponentKind.NETWORK,
+            name="Red",
+            facts={"Caso": "C1"},
+            summary="APIPA",
+            status=HealthStatus.CRITICAL,
+            possible_problem="Dirección APIPA (169.254.x.x) sin DHCP",
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((net,))
+
+        self.assertTrue(report.recommendations[0].modifies_system)
