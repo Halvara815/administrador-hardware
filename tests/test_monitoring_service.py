@@ -3,8 +3,13 @@
 import time
 from datetime import UTC, datetime
 from unittest import TestCase
+from unittest.mock import MagicMock, patch
 
-from hardware_admin.services.monitoring_service import MonitoringService, Sample
+from hardware_admin.services.monitoring_service import (
+    MonitoringService,
+    PsutilRateSampler,
+    Sample,
+)
 
 
 def sample_at(second: int, read: float = 1.0) -> Sample:
@@ -80,3 +85,91 @@ class MonitoringServiceTests(TestCase):
         time.sleep(0.1)
         self.assertEqual(len(service.snapshot()), captured)
         self.assertGreater(captured, 0)
+
+
+def io_counters(read: int, write: int) -> MagicMock:
+    counters = MagicMock()
+    counters.read_bytes = read
+    counters.write_bytes = write
+    return counters
+
+
+def net_counters(sent: int, recv: int) -> MagicMock:
+    counters = MagicMock()
+    counters.bytes_sent = sent
+    counters.bytes_recv = recv
+    return counters
+
+
+class PsutilRateSamplerTests(TestCase):
+    @patch("psutil.net_io_counters")
+    @patch("psutil.disk_io_counters")
+    def test_first_reading_yields_no_sample(self, disk: MagicMock, net: MagicMock) -> None:
+        """Sin lectura previa no hay tasa: publicarla seria un pico falso."""
+        disk.return_value = io_counters(1000, 2000)
+        net.return_value = net_counters(3000, 4000)
+        sampler = PsutilRateSampler(clock=lambda: 100.0)
+
+        self.assertIsNone(sampler())
+
+    @patch("psutil.net_io_counters")
+    @patch("psutil.disk_io_counters")
+    def test_second_reading_divides_the_delta_by_the_elapsed_time(
+        self, disk: MagicMock, net: MagicMock
+    ) -> None:
+        times = iter([100.0, 102.0])
+        sampler = PsutilRateSampler(clock=lambda: next(times))
+
+        disk.return_value = io_counters(1000, 2000)
+        net.return_value = net_counters(3000, 4000)
+        self.assertIsNone(sampler())
+
+        disk.return_value = io_counters(1200, 2400)
+        net.return_value = net_counters(3600, 4800)
+        sample = sampler()
+
+        assert sample is not None
+        self.assertAlmostEqual(sample.disk_read_bps, 100.0)
+        self.assertAlmostEqual(sample.disk_write_bps, 200.0)
+        self.assertAlmostEqual(sample.net_sent_bps, 300.0)
+        self.assertAlmostEqual(sample.net_recv_bps, 400.0)
+        self.assertEqual(sample.collected_at.tzinfo, UTC)
+
+    @patch("psutil.net_io_counters")
+    @patch("psutil.disk_io_counters")
+    def test_absent_disk_counters_are_reported_as_zero_not_as_a_crash(
+        self, disk: MagicMock, net: MagicMock
+    ) -> None:
+        """psutil devuelve None en algunos equipos: es dato ausente, no un fallo."""
+        times = iter([100.0, 101.0])
+        sampler = PsutilRateSampler(clock=lambda: next(times))
+        disk.return_value = None
+        net.return_value = net_counters(3000, 4000)
+        self.assertIsNone(sampler())
+
+        net.return_value = net_counters(3100, 4100)
+        sample = sampler()
+
+        assert sample is not None
+        self.assertEqual(sample.disk_read_bps, 0.0)
+        self.assertAlmostEqual(sample.net_sent_bps, 100.0)
+
+    @patch("psutil.net_io_counters")
+    @patch("psutil.disk_io_counters")
+    def test_a_counter_going_backwards_is_reported_as_zero(
+        self, disk: MagicMock, net: MagicMock
+    ) -> None:
+        """Un contador que retrocede no puede dar una tasa negativa."""
+        times = iter([100.0, 101.0])
+        sampler = PsutilRateSampler(clock=lambda: next(times))
+        disk.return_value = io_counters(5000, 5000)
+        net.return_value = net_counters(5000, 5000)
+        self.assertIsNone(sampler())
+
+        disk.return_value = io_counters(10, 20)
+        net.return_value = net_counters(30, 40)
+        sample = sampler()
+
+        assert sample is not None
+        self.assertEqual(sample.disk_read_bps, 0.0)
+        self.assertEqual(sample.net_recv_bps, 0.0)
