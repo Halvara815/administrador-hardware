@@ -113,18 +113,25 @@ accidental del diccionario: ahora es una comprobación explícita con mensaje
 propio. El registro de exportaciones vive en la capa de reportes, no en la
 interfaz, para poder comprobarlo sin abrir ventana.
 
-### Fase 10 — Objetivos operativos
+### Fase 10 — Objetivos operativos — **COMPLETADA**
 
-Declarados en «Objetivos operativos» del [plan](BUILD_PLAN.md) y no implementados.
-
-| # | Qué | Objetivo declarado |
+| # | Qué | Cómo quedó |
 |---|---|---|
-| 10.1 | Límite total del escaneo | 60 s, mostrando resultados parciales al excederlo |
-| 10.2 | Presupuesto total de las pruebas de red | 30 s en total; hoy sólo hay 5 s por intento |
-| 10.3 | Identificador de sesión en los registros | «Registrar ID de sesión, consulta, duración y resultado» |
+| 10.1 | Límite total del escaneo | `DEFAULT_BUDGET_SECONDS = 60`; al agotarse se cancela lo que no arrancó y se entregan los resultados obtenidos |
+| 10.2 | Presupuesto total de las pruebas de red | `DEFAULT_NETWORK_BUDGET_SECONDS = 30`, además del límite por intento |
+| 10.3 | Identificador de sesión | Cada escaneo genera uno y aparece en `collector_completed` y `scan_completed`, junto a la duración |
 
-**Aceptación:** un escaneo que exceda el límite entrega lo obtenido hasta ese
-momento y lo declara como cobertura parcial, en lugar de seguir indefinidamente.
+**La decisión que importa:** un componente que no llegó a consultarse se marca
+como `ERROR`, no como `UNKNOWN`. Así aparece en las limitaciones del reporte y
+en `errores_de_consulta` del JSON. Si quedara como desconocido pasaría
+inadvertido, y el plan es explícito en que «una prueba omitida no equivale a
+hardware sano». Lo mismo en red: una etapa omitida devuelve ADVERTENCIA, nunca
+NORMAL.
+
+**Nota de implementación:** al agotarse el presupuesto se cancelan las tareas
+pendientes, pero una consulta ya en marcha no se puede interrumpir. Su límite
+propio es de 15 s, así que el escaneo puede extenderse hasta esa cola antes de
+devolver los resultados parciales.
 
 ### Fase 11 — Verificación de entorno
 

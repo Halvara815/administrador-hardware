@@ -1,11 +1,13 @@
 """Pruebas unitarias de conectividad escalonada y casos de red (APIPA / DNS)."""
 
+import time
 from unittest import TestCase
 from unittest.mock import MagicMock
 
 from hardware_admin.domain.models import ConnectivityStage, HealthStatus
 from hardware_admin.infrastructure.commands import NativeCommandResult
 from hardware_admin.services.connectivity_service import (
+    DEFAULT_NETWORK_BUDGET_SECONDS,
     ConnectivityService,
     is_apipa,
 )
@@ -126,3 +128,62 @@ class ConnectivityServiceTests(TestCase):
         for stage in report.stages:
             self.assertTrue(stage.succeeded)
 
+
+
+class NetworkBudgetTests(TestCase):
+    """Objetivo operativo: pruebas de red acotadas a 30 s en total."""
+
+    def test_the_declared_budget_is_the_documented_one(self) -> None:
+        self.assertEqual(DEFAULT_NETWORK_BUDGET_SECONDS, 30.0)
+
+    def test_a_slow_stage_stops_the_remaining_probes(self) -> None:
+        """Agotado el presupuesto no se lanzan más pruebas externas."""
+        runner = MagicMock()
+        llamadas: list[str] = []
+
+        def ping_lento(target: str, **kwargs: object) -> NativeCommandResult:
+            llamadas.append(f"ping:{target}")
+            time.sleep(0.35)
+            return NativeCommandResult(command=("ping.exe", target), output="", exit_code=0)
+
+        def nslookup(domain: str, **kwargs: object) -> NativeCommandResult:
+            llamadas.append(f"nslookup:{domain}")
+            return NativeCommandResult(command=("nslookup.exe", domain), output="Address: 1.2.3.4", exit_code=0)
+
+        runner.ping.side_effect = ping_lento
+        runner.nslookup.side_effect = nslookup
+
+        report = ConnectivityService(runner).check(
+            adapter_connected=True,
+            local_ip="192.168.1.50",
+            gateway="192.168.1.1",
+            budget_seconds=0.4,
+        )
+
+        self.assertNotIn("nslookup:google.com", llamadas)
+        etapas = {s.stage: s for s in report.stages}
+        self.assertIn(ConnectivityStage.DNS, etapas)
+        self.assertFalse(etapas[ConnectivityStage.DNS].succeeded)
+        self.assertIn("presupuesto", etapas[ConnectivityStage.DNS].details.lower())
+
+    def test_a_skipped_stage_is_not_reported_as_successful(self) -> None:
+        """Una prueba omitida no puede leerse como conectividad correcta."""
+        runner = MagicMock()
+
+        def ping_lento(target: str, **kwargs: object) -> NativeCommandResult:
+            time.sleep(0.35)
+            return NativeCommandResult(command=("ping.exe", target), output="", exit_code=0)
+
+        runner.ping.side_effect = ping_lento
+        runner.nslookup.return_value = NativeCommandResult(
+            command=("nslookup.exe",), output="Address: 1.2.3.4", exit_code=0
+        )
+
+        report = ConnectivityService(runner).check(
+            adapter_connected=True,
+            local_ip="192.168.1.50",
+            gateway="192.168.1.1",
+            budget_seconds=0.4,
+        )
+
+        self.assertIsNot(report.status, HealthStatus.NORMAL)

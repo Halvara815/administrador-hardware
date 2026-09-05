@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from dataclasses import dataclass
 
 from hardware_admin.domain.models import (
@@ -34,11 +35,37 @@ class ConnectivityReport:
     is_icmp_blocked: bool = False
 
 
+#: Presupuesto total de las pruebas de red. Cada intento tiene además su
+#: propio límite; esta constante acota la suma, para que una cadena de
+#: intentos lentos no se coma el escaneo entero.
+DEFAULT_NETWORK_BUDGET_SECONDS = 30.0
+
+
 class ConnectivityService:
     """Ejecuta pruebas escalonadas de red: Adaptador -> IP -> Gateway -> IP Externa -> DNS."""
 
     def __init__(self, runner: SafeCommandRunner | None = None) -> None:
         self.runner = runner or SafeCommandRunner()
+
+    @staticmethod
+    def _build_report(
+        stages: list[ConnectivityCheckResult],
+    ) -> ConnectivityReport:
+        """Reporte de una comprobación interrumpida por falta de presupuesto.
+
+        El estado es ADVERTENCIA, no NORMAL: no se llegó a comprobar la salida
+        a Internet, y una prueba omitida no demuestra que la red funcione.
+        """
+        return ConnectivityReport(
+            stages=tuple(stages),
+            status=HealthStatus.WARNING,
+            problem_title="Comprobación de red incompleta: se agotó el presupuesto de tiempo",
+            recommendations=(
+                "Repetir el análisis de la sección Red cuando el equipo esté menos cargado.",
+                "Comprobar manualmente la salida a Internet antes de descartar un problema.",
+            ),
+            is_icmp_blocked=False,
+        )
 
     def check(
         self,
@@ -47,8 +74,30 @@ class ConnectivityService:
         gateway: str | None,
         external_target: str = "8.8.8.8",
         dns_domain: str = "google.com",
+        budget_seconds: float = DEFAULT_NETWORK_BUDGET_SECONDS,
     ) -> ConnectivityReport:
-        """Realiza la comprobación escalonada completa con timeouts acotados."""
+        """Realiza la comprobación escalonada completa con timeouts acotados.
+
+        Además del límite por intento, respeta un presupuesto total. Si se
+        agota, las etapas restantes se declaran omitidas: una prueba que no se
+        ejecutó no puede leerse como conectividad correcta.
+        """
+        started = time.monotonic()
+
+        def budget_left() -> bool:
+            return (time.monotonic() - started) < budget_seconds
+
+        def skipped(stage: ConnectivityStage, target: str) -> ConnectivityCheckResult:
+            return ConnectivityCheckResult(
+                stage=stage,
+                target=target,
+                succeeded=False,
+                details=(
+                    f"Prueba omitida: se agotó el presupuesto total de red "
+                    f"({budget_seconds:.0f} s). Resultado no concluyente."
+                ),
+            )
+
         stages: list[ConnectivityCheckResult] = []
 
         # 1. Escalón: Adaptador físico/lógico
@@ -193,6 +242,10 @@ class ConnectivityService:
             )
 
         # 4. Escalón: IP Externa de referencia (8.8.8.8)
+        if not budget_left():
+            stages.append(skipped(ConnectivityStage.EXTERNAL_IP, external_target))
+            stages.append(skipped(ConnectivityStage.DNS, dns_domain))
+            return self._build_report(stages)
         ping_ext = self.runner.ping(external_target, count=1, timeout_ms=3000, overall_timeout=4.0)
         ext_ok = ping_ext.exit_code == 0
         stages.append(
@@ -209,6 +262,9 @@ class ConnectivityService:
         )
 
         # 5. Escalón: Resolución DNS determinista (google.com)
+        if not budget_left():
+            stages.append(skipped(ConnectivityStage.DNS, dns_domain))
+            return self._build_report(stages)
         ns_res = self.runner.nslookup(dns_domain, timeout=4.0)
         dns_ok = self._is_dns_resolved(ns_res.output, ns_res.exit_code)
         stages.append(
