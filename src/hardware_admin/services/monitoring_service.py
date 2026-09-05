@@ -26,6 +26,27 @@ class Sample:
     net_recv_bps: float
 
 
+@dataclass(frozen=True, slots=True)
+class SeriesStats:
+    """Pico y media de una de las cuatro series."""
+
+    peak: float
+    mean: float
+
+
+@dataclass(frozen=True, slots=True)
+class MonitoringSummary:
+    """Resumen con fecha de la serie capturada, listo para exportar en fase 5."""
+
+    sample_count: int
+    started_at: datetime | None
+    ended_at: datetime | None
+    disk_read: SeriesStats
+    disk_write: SeriesStats
+    net_sent: SeriesStats
+    net_recv: SeriesStats
+
+
 #: Devuelve None cuando todavia no puede calcularse una tasa.
 Sampler = Callable[[], "Sample | None"]
 
@@ -81,6 +102,26 @@ class MonitoringService:
         with self._lock:
             self._samples.clear()
 
+    def summary(self) -> MonitoringSummary:
+        """Picos, medias y ventana temporal de lo capturado hasta ahora."""
+        samples = self.snapshot()
+        if not samples:
+            empty = SeriesStats(peak=0.0, mean=0.0)
+            return MonitoringSummary(0, None, None, empty, empty, empty, empty)
+
+        def stats(values: tuple[float, ...]) -> SeriesStats:
+            return SeriesStats(peak=max(values), mean=sum(values) / len(values))
+
+        return MonitoringSummary(
+            sample_count=len(samples),
+            started_at=samples[0].collected_at,
+            ended_at=samples[-1].collected_at,
+            disk_read=stats(tuple(item.disk_read_bps for item in samples)),
+            disk_write=stats(tuple(item.disk_write_bps for item in samples)),
+            net_sent=stats(tuple(item.net_sent_bps for item in samples)),
+            net_recv=stats(tuple(item.net_recv_bps for item in samples)),
+        )
+
     def _loop(self) -> None:
         # wait() devuelve True cuando piden parar, asi que la parada es
         # inmediata en vez de esperar a que acabe el intervalo en curso.
@@ -88,7 +129,13 @@ class MonitoringService:
             self._collect_once()
 
     def _collect_once(self) -> None:
-        sample = self.sampler()
+        try:
+            sample = self.sampler()
+        except Exception:
+            # Un contador que falla es un dato ausente, no un motivo para
+            # detener la monitorizacion ni para tumbar la aplicacion.
+            LOGGER.exception("monitoring_sampler_failed")
+            return
         if sample is None:
             return
         with self._lock:

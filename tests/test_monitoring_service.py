@@ -87,6 +87,40 @@ class MonitoringServiceTests(TestCase):
         self.assertGreater(captured, 0)
 
 
+    def test_summary_reports_peaks_means_and_window(self) -> None:
+        service = MonitoringService(sampler=lambda: None)
+        for index, read in enumerate((10.0, 30.0, 20.0)):
+            service._samples.append(sample_at(index, read=read))
+
+        summary = service.summary()
+        self.assertEqual(summary.sample_count, 3)
+        self.assertEqual(summary.disk_read.peak, 30.0)
+        self.assertAlmostEqual(summary.disk_read.mean, 20.0)
+        assert summary.started_at is not None and summary.ended_at is not None
+        self.assertEqual(summary.started_at.second, 0)
+        self.assertEqual(summary.ended_at.second, 2)
+
+    def test_summary_of_an_empty_series_is_zero_without_dividing_by_zero(self) -> None:
+        summary = MonitoringService(sampler=lambda: None).summary()
+
+        self.assertEqual(summary.sample_count, 0)
+        self.assertIsNone(summary.started_at)
+        self.assertEqual(summary.disk_read.peak, 0.0)
+        self.assertEqual(summary.disk_read.mean, 0.0)
+
+    def test_a_failing_sampler_is_logged_without_killing_the_thread(self) -> None:
+        """Un fallo de muestreo no debe tumbar la monitorizacion ni la app."""
+
+        def boom() -> Sample | None:
+            raise OSError("contador no disponible")
+
+        service = MonitoringService(sampler=boom)
+        with self.assertLogs("hardware_admin.services.monitoring_service", "ERROR"):
+            service._collect_once()
+
+        self.assertEqual(service.snapshot(), ())
+        service._collect_once()
+
 def io_counters(read: int, write: int) -> MagicMock:
     counters = MagicMock()
     counters.read_bytes = read
