@@ -63,6 +63,16 @@ recomendaciones y exportación.
 
 ### Pendiente
 
-- Documentación de campo con pruebas reales de dispositivos (fase 6).
-- Validación del ejecutable en un equipo limpio sin Python (fase 7).
-- Asesoría de compra y ampliación (slices E1–E8), no iniciada.
+Detallado por fases en el [trabajo pendiente](README.md#trabajo-pendiente).
+
+- **Fase 8:** validación del JSON de las consultas; hoy una salida truncada o
+  precedida de una advertencia de PowerShell deja el componente en error de
+  consulta en lugar de manejarse limpiamente.
+- **Fase 9:** pruebas de timeout, de rechazo de consulta fuera de catálogo y
+  registro de la exportación.
+- **Fase 10:** límite total de escaneo de 60 s, presupuesto de red de 30 s e
+  identificador de sesión en los registros.
+- **Fase 11:** escalado 100/125/150 %, escaneo de dependencias, protocolo de
+  pruebas reales y validación en equipo limpio.
+- Asesoría de compra y ampliación (slices E1–E8) e integración de IA (I1–I5),
+  diseñadas y no iniciadas; no son requisito del enunciado.

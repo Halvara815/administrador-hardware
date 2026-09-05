@@ -1,8 +1,15 @@
 # Hardware Diagnostic & Repair Assistant — plan de producto
 
 Fecha: 2026-09-05. Estado: **LAS SIETE FASES IMPLEMENTADAS.**
-Quedan dos verificaciones que exigen intervención humana y no pueden
-automatizarse: ejecutar el [protocolo de pruebas
+
+Una auditoría posterior de los documentos de arquitectura encontró controles
+que la documentación declara como existentes y que el código no tiene: la
+validación del JSON, tres pruebas del modelo de amenazas y los límites globales
+de tiempo. Están organizados como **fases 8 a 11** en el
+[trabajo pendiente del README](README.md#trabajo-pendiente).
+
+Dos verificaciones exigen intervención humana y no pueden automatizarse:
+ejecutar el [protocolo de pruebas
 reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) con dispositivos físicos, y
 validar el ejecutable en un equipo limpio distinto del de desarrollo. Hasta
 entonces no se declara una versión validada en todos los equipos.

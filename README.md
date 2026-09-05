@@ -74,6 +74,69 @@ La IA futura será opcional. El diseño contempla consentimiento para consultas
 remotas y fuentes verificables para recomendaciones. La gestión de cuentas,
 pagos o cuotas comerciales requerirá una decisión independiente.
 
+## Trabajo pendiente
+
+Las siete fases del [plan](BUILD_PLAN.md) están implementadas. Lo que sigue
+salió de auditar los documentos de arquitectura de principio a fin: son
+controles que la documentación **declara como existentes** y que el código no
+tiene. Se abordan por fases, cada una con sus propias pruebas y gates.
+
+### Fase 8 — Robustez de las consultas
+
+| # | Qué | Dónde | Por qué |
+|---|---|---|---|
+| 8.1 | Validar el JSON antes de interpretarlo | `infrastructure/powershell.py` | `parse_json_rows` llama a `json.loads` sin protección: una salida truncada o una línea de advertencia de PowerShell antes del JSON lanza `JSONDecodeError` y tumba el componente entero |
+| 8.2 | Limitar el tamaño de la salida antes de parsearla | `infrastructure/powershell.py` | El [modelo de amenazas](docs/architecture/05-security-threat-model.md) declara «límite de tamaño y validación JSON» como control existente |
+| 8.3 | Fixtures truncadas e inválidas | `tests/test_powershell.py` | Es la «evidencia de prueba» que ese mismo documento dice tener |
+
+**Aceptación:** una salida malformada produce un resultado `ERROR` con detalle
+legible, nunca una excepción sin capturar.
+
+### Fase 9 — Pruebas de los controles declarados
+
+El [modelo de amenazas](docs/architecture/05-security-threat-model.md) enumera
+controles con su evidencia de prueba. Tres de esas pruebas no existen.
+
+| # | Prueba que falta | Control que respalda |
+|---|---|---|
+| 9.1 | Timeout de consulta | «Proceso colgado → timeout y finalización controlada» |
+| 9.2 | Rechazo de consulta fuera del catálogo | «Inyección de comandos → consultas fijas» |
+| 9.3 | Registro de la exportación: resultado y ruta | [Observabilidad](docs/architecture/07-observability-slo.md) pide «resultado y ruta final de exportación» |
+
+**Aceptación:** cada fila de la tabla de amenazas apunta a una prueba que
+existe y pasa. Mientras no sea así, la tabla afirma más de lo que puede probar.
+
+### Fase 10 — Objetivos operativos
+
+Declarados en «Objetivos operativos» del [plan](BUILD_PLAN.md) y no implementados.
+
+| # | Qué | Objetivo declarado |
+|---|---|---|
+| 10.1 | Límite total del escaneo | 60 s, mostrando resultados parciales al excederlo |
+| 10.2 | Presupuesto total de las pruebas de red | 30 s en total; hoy sólo hay 5 s por intento |
+| 10.3 | Identificador de sesión en los registros | «Registrar ID de sesión, consulta, duración y resultado» |
+
+**Aceptación:** un escaneo que exceda el límite entrega lo obtenido hasta ese
+momento y lo declara como cobertura parcial, en lugar de seguir indefinidamente.
+
+### Fase 11 — Verificación de entorno
+
+| # | Qué | Nota |
+|---|---|---|
+| 11.1 | Escalado 100 %, 125 % y 150 % | [Requisito no funcional](docs/architecture/02-nfr-capacity.md) sin tratamiento explícito ni evidencia |
+| 11.2 | Escaneo de dependencias en CI | Control declarado en el modelo de amenazas; no hay CI |
+| 11.3 | [Protocolo PR-01…PR-18](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) | Requiere hardware físico; **no automatizable** |
+| 11.4 | Validación del EXE en un equipo limpio | Requiere una segunda máquina; **no automatizable** |
+
+### Fuera del plan de fases
+
+Los slices **E1–E8** del [asesor](docs/architecture/09-diagnostic-advisor.md)
+—ampliación de RAM, compatibilidad de GPU, asesor SSD, rendimiento por sesión—
+y la integración de IA **I1–I5** están diseñados y **no iniciados**. No son
+requisito del enunciado: la documentación es explícita en que «I1–I5 es la
+integración IA, no un requisito para ejecutar los recorridos deterministas».
+La [evolución comercial](docs/COMMERCIAL_ROADMAP.md) sigue diferida.
+
 ## Distribución y soporte
 
 El repositorio contiene código, pruebas y documentación de desarrollo.
