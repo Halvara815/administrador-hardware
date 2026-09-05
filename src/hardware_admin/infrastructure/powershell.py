@@ -19,7 +19,10 @@ class PowerShellQuery(StrEnum):
     PROBLEM_DEVICES = "problem_devices"
     VIDEO_CONTROLLERS = "video_controllers"
     DISKS = "disks"
+    PHYSICAL_DISKS = "physical_disks"
+    VOLUMES = "volumes"
     NETWORK_ADAPTERS = "network_adapters"
+    NETWORK_CONFIGURATION = "network_configuration"
 
 
 @dataclass(frozen=True, slots=True)
@@ -63,7 +66,7 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
                 @{Name='Nombre';Expression={$_.DeviceName}},
                 @{Name='Tipo';Expression={$_.DeviceClass}},
                 @{Name='Estado';Expression={if ($_.IsSigned) {'Firmado'} else {'No firmado'}}},
-                DriverVersion,DriverDate,Manufacturer,IsSigned)
+                DriverVersion,DriverDate,Manufacturer,IsSigned,DeviceID,HardWareID)
     """,
     PowerShellQuery.PROBLEM_DEVICES: """
         $data = @(Get-PnpDevice -PresentOnly |
@@ -73,12 +76,14 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
     PowerShellQuery.VIDEO_CONTROLLERS: """
         $gpu = @(Get-CimInstance Win32_VideoController | ForEach-Object {
             [PSCustomObject]@{Tipo='GPU'; Nombre=$_.Name; Estado=$_.Status;
+                Procesador=$_.VideoProcessor;
                 Memoria=$_.AdapterRAM; Resolucion=("{0}x{1}" -f $_.CurrentHorizontalResolution,
                 $_.CurrentVerticalResolution); Driver=$_.DriverVersion;
                 PNPDeviceID=$_.PNPDeviceID}
         })
         $monitor = @(Get-CimInstance Win32_DesktopMonitor | ForEach-Object {
             [PSCustomObject]@{Tipo='Monitor'; Nombre=$_.Name; Estado=$_.Status;
+                Procesador=$null;
                 Memoria=$null; Resolucion=$null; Driver=$null;
                 PNPDeviceID=$_.PNPDeviceID}
         })
@@ -93,9 +98,30 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
             @{Name='Salud';Expression={$_.HealthStatus}},
             @{Name='Capacidad';Expression={$_.Size}},PartitionStyle)
     """,
+    PowerShellQuery.PHYSICAL_DISKS: """
+        $data = @(Get-PhysicalDisk | Select-Object `
+            DeviceId,FriendlyName,MediaType,BusType,OperationalStatus,HealthStatus,Size)
+    """,
+    PowerShellQuery.VOLUMES: """
+        $data = @(Get-Volume | Select-Object `
+            DriveLetter,FileSystemLabel,FileSystem,DriveType,HealthStatus,OperationalStatus,Size,SizeRemaining)
+    """,
     PowerShellQuery.NETWORK_ADAPTERS: """
         $data = @(Get-NetAdapter | Select-Object Name,InterfaceDescription,
             Status,MacAddress,LinkSpeed)
+    """,
+    PowerShellQuery.NETWORK_CONFIGURATION: """
+        $data = @(Get-CimInstance Win32_NetworkAdapterConfiguration | Where-Object {$_.IPEnabled} | ForEach-Object {
+            [PSCustomObject]@{
+                Descripcion=$_.Description;
+                MAC=$_.MACAddress;
+                IPv4=@($_.IPAddress | Where-Object {$_ -like '*.*'}) -join ', ';
+                IPv6=@($_.IPAddress | Where-Object {$_ -like '*:*'}) -join ', ';
+                Gateway=@($_.DefaultIPGateway) -join ', ';
+                DNS=@($_.DNSServerSearchOrder) -join ', ';
+                DHCPEnabled=$_.DHCPEnabled;
+            }
+        })
     """,
 }
 

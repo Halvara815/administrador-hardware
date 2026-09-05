@@ -130,3 +130,82 @@ class DiagnosticEngineTests(TestCase):
 
         self.assertIn("No se observan anomalías en los indicadores consultados", report.conclusion)
         self.assertNotIn("sin problemas", report.conclusion)
+
+    def test_network_case_c1_apipa_conclusion(self) -> None:
+        net_result = ComponentResult(
+            component=ComponentKind.NETWORK,
+            name="Red",
+            facts={"Caso": "C1", "Diagnóstico de red": "Dirección APIPA (169.254.x.x)"},
+            summary="APIPA (169.254.x.x) - Sin DHCP",
+            status=HealthStatus.CRITICAL,
+            possible_problem="Dirección APIPA (169.254.x.x) sin concesión DHCP ni acceso a red local",
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((net_result,))
+        self.assertTrue(report.has_problems)
+        self.assertIn("Caso C1", report.conclusion)
+        self.assertIn("APIPA", report.conclusion)
+        self.assertIn("DHCP", report.conclusion)
+        self.assertIn("ipconfig /release", report.conclusion)
+
+    def test_network_case_dns_failure_conclusion(self) -> None:
+        net_result = ComponentResult(
+            component=ComponentKind.NETWORK,
+            name="Red",
+            facts={"Caso": "DNS", "Diagnóstico de red": "Conectividad IP operativa pero fallo de resolución DNS"},
+            summary="Fallo de resolución DNS",
+            status=HealthStatus.WARNING,
+            possible_problem="Conectividad IP operativa pero fallo de resolución DNS",
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((net_result,))
+        self.assertTrue(report.has_problems)
+        self.assertIn("resolución DNS", report.conclusion)
+        self.assertIn("ipconfig /flushdns", report.conclusion)
+
+    def test_pci_case_c2_conclusion(self) -> None:
+        pci_result = ComponentResult(
+            component=ComponentKind.PCI,
+            name="PCI / PCIe",
+            facts={"Caso": "C2"},
+            summary="1 disp. con error",
+            status=HealthStatus.CRITICAL,
+            possible_problem="Problema localizado en adaptador de red PCIe (Realtek, Código: 10)",
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((pci_result,))
+        self.assertTrue(report.has_problems)
+        self.assertIn("Caso C2", report.conclusion)
+        self.assertIn("adaptador de red PCIe", report.conclusion)
+        self.assertIn("Administrador de dispositivos", report.conclusion)
+
+    def test_usb_case_c3_conclusion(self) -> None:
+        usb_result = ComponentResult(
+            component=ComponentKind.USB,
+            name="USB",
+            facts={"Caso": "C3"},
+            summary="1 disp. con error",
+            status=HealthStatus.CRITICAL,
+            possible_problem="Problema localizado en periférico USB (SanDisk, Código: 43)",
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((usb_result,))
+        self.assertTrue(report.has_problems)
+        self.assertIn("Caso C3", report.conclusion)
+        self.assertIn("periférico o memoria USB", report.conclusion)
+        self.assertIn("controlador anfitrión USB funciona correctamente", report.conclusion)
+        self.assertIn("no está degradado", report.conclusion)
+
+    def test_gpu_ok_with_persistent_symptom_conclusion(self) -> None:
+        gpu_result = ComponentResult(
+            component=ComponentKind.MONITOR_GPU,
+            name="Monitor y GPU",
+            facts={},
+            summary="1 GPU · Estado OK",
+            status=HealthStatus.NORMAL,
+            evidence=(),
+        )
+        report = RuleBasedDiagnosticEngine().build_report((gpu_result,), symptom="el equipo se reinicia al jugar")
+        self.assertIn("DirectX", report.conclusion)
+        self.assertIn("gráficos por aplicación", report.conclusion)
+        self.assertIn("controladores", report.conclusion)

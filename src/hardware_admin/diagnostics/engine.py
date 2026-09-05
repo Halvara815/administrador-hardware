@@ -53,11 +53,60 @@ class RuleBasedDiagnosticEngine:
                 f"La causa más probable de lentitud es la carga de CPU ({cpu.summary.lower()})."
             )
 
+        network = by_kind.get(ComponentKind.NETWORK)
+        network_alert = network and network.status in {
+            HealthStatus.WARNING,
+            HealthStatus.CRITICAL,
+        }
+        if network_alert and network:
+            if "APIPA" in (network.possible_problem or "") or "APIPA" in str(network.facts):
+                conclusion_parts.append(
+                    "Problema de red detectado (Caso C1): dirección APIPA (169.254.x.x) sin concesión DHCP "
+                    "ni puerta de enlace. Se sugiere verificar el router/DHCP y ejecutar manualmente "
+                    "'ipconfig /all', 'ipconfig /release' y 'ipconfig /renew'."
+                )
+            elif "DNS" in (network.possible_problem or "") or "DNS" in str(network.facts.get("Diagnóstico de red", "")):
+                conclusion_parts.append(
+                    "Problema de red detectado: la conectividad IP externa responde pero falla la resolución DNS. "
+                    "Se sugiere verificar los servidores DNS o ejecutar manualmente 'ipconfig /flushdns'."
+                )
+
+        pci = by_kind.get(ComponentKind.PCI)
+        pci_alert = pci and pci.status in {HealthStatus.WARNING, HealthStatus.CRITICAL}
+        pci_c2_handled = False
+        if pci_alert and pci and (pci.facts.get("Caso") == "C2" or "adaptador de red PCIe" in (pci.possible_problem or "")):
+            conclusion_parts.append(
+                "Problema de hardware localizado (Caso C2): anomalía en adaptador de red PCIe. "
+                "El resto de dispositivos se reporta normal; se sugiere revisar el código en el "
+                "Administrador de dispositivos, comprobar la inserción en la ranura PCIe y actualizar el controlador."
+            )
+            pci_c2_handled = True
+
+        usb = by_kind.get(ComponentKind.USB)
+        usb_alert = usb and usb.status in {HealthStatus.WARNING, HealthStatus.CRITICAL}
+        usb_c3_handled = False
+        if usb_alert and usb and (usb.facts.get("Caso") == "C3" or "periférico USB" in (usb.possible_problem or "")):
+            conclusion_parts.append(
+                "Problema de hardware localizado (Caso C3): falla aislada en periférico o memoria USB. "
+                "El controlador anfitrión USB funciona correctamente y el bus principal no está degradado; "
+                "se sugiere verificar el periférico concreto o su controlador sin condenar el bus."
+            )
+            usb_c3_handled = True
+
+        handled_components = {ComponentKind.CPU, ComponentKind.MEMORY, ComponentKind.NETWORK}
+        if pci_c2_handled:
+            handled_components.add(ComponentKind.PCI)
+        if usb_c3_handled:
+            handled_components.add(ComponentKind.USB)
+
         other_alerts = [
             result
             for result in alerts
-            if result.component not in {ComponentKind.CPU, ComponentKind.MEMORY}
+            if result.component not in handled_components
         ]
+        if network_alert and network and not any("Problema de red detectado" in p for p in conclusion_parts):
+            other_alerts.insert(0, network)
+
         if other_alerts:
             descriptions = "; ".join(
                 f"{result.name}: {result.possible_problem or result.summary}"
@@ -82,6 +131,13 @@ class RuleBasedDiagnosticEngine:
                 "diagnóstico adicional de temperatura, fuente de alimentación, GPU, "
                 "controladores, eventos del sistema, memoria RAM y el resto del hardware."
             )
+            gpu = by_kind.get(ComponentKind.MONITOR_GPU)
+            if gpu and gpu.status is HealthStatus.NORMAL:
+                conclusion_parts.append(
+                    "Para el subsistema de GPU y gráficos, con estado en OK pero síntomas reportados, "
+                    "se recomienda revisar la compatibilidad de DirectX, ajustes gráficos por aplicación, "
+                    "instalación limpia de controladores y estabilidad de alimentación PCIe."
+                )
         if expected_device and not alerts:
             conclusion_parts.append(
                 f"El dispositivo esperado («{expected_device}») no se usó para "

@@ -7,6 +7,6 @@ from hardware_admin.services.scan_service import ScanService
 
 def build_scan_service() -> ScanService:
     return ScanService(
-        collectors=build_default_collectors(),  # type: ignore[arg-type]
+        collectors=build_default_collectors(),
         diagnostic_engine=RuleBasedDiagnosticEngine(),
     )

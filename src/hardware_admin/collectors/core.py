@@ -10,7 +10,8 @@ from typing import Any
 
 import psutil
 
-from hardware_admin.diagnostics.rules import CPU_RULE, DISK_RULE, MEMORY_RULE
+from hardware_admin.collectors.base import HardwareCollector
+from hardware_admin.diagnostics.rules import CPU_RULE, MEMORY_RULE
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -22,6 +23,7 @@ from hardware_admin.infrastructure.powershell import (
     SafePowerShellRunner,
     parse_json_rows,
 )
+from hardware_admin.services.connectivity_service import ConnectivityService
 
 
 def format_bytes(value: float | None) -> str:
@@ -176,209 +178,171 @@ class MemoryCollector:
         )
 
 
-class DiskCollector:
-    component = ComponentKind.DISK
+from hardware_admin.collectors.storage import StorageCollector
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
-        self.runner = runner
-
-    def collect(self) -> ComponentResult:
-        volumes: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        for partition in psutil.disk_partitions(all=False):
-            if partition.mountpoint in seen:
-                continue
-            seen.add(partition.mountpoint)
-            try:
-                usage = psutil.disk_usage(partition.mountpoint)
-            except (OSError, PermissionError):
-                continue
-            volumes.append(
-                {
-                    "Unidad": partition.mountpoint,
-                    "Sistema": partition.fstype or "No disponible",
-                    "Capacidad": format_bytes(usage.total),
-                    "Disponible": format_bytes(usage.free),
-                    "Uso": f"{usage.percent:.1f}%",
-                    "UsoNum": usage.percent,
-                }
-            )
-        result = self.runner.run(PowerShellQuery.DISKS)
-        disks = parse_json_rows(result)
-        max_usage = max((float(item["UsoNum"]) for item in volumes), default=0.0)
-        status = DISK_RULE.classify(max_usage)
-        problem = "Poco espacio disponible" if status is not HealthStatus.NORMAL else None
-        clean_volumes = [{k: v for k, v in item.items() if k != "UsoNum"} for item in volumes]
-        facts = {"Unidades": clean_volumes, "Discos físicos": disks}
-        volume_text = "\n".join(
-            f"{v['Unidad']} | {v['Sistema']} | {v['Capacidad']} | Uso {v['Uso']}"
-            for v in clean_volumes
-        )
-        output = f"psutil.disk_partitions() / disk_usage()\n{volume_text}\n\n{result.output}"
-        return ComponentResult(
-            self.component,
-            "Almacenamiento",
-            facts,
-            summary=f"Máximo {max_usage:.0f}% ocupado",
-            status=status,
-            possible_problem=problem,
-            evidence=(_evidence("psutil + PowerShell", "Discos y volúmenes", output),),
-        )
+DiskCollector = StorageCollector
 
 
 class NetworkCollector:
     component = ComponentKind.NETWORK
 
+    def __init__(
+        self,
+        runner: SafePowerShellRunner | None = None,
+        connectivity_service: ConnectivityService | None = None,
+    ) -> None:
+        self.runner = runner or SafePowerShellRunner()
+        self.connectivity_service = connectivity_service or ConnectivityService()
+
     def collect(self) -> ComponentResult:
         addresses = psutil.net_if_addrs()
         stats = psutil.net_if_stats()
+
+        ps_result = self.runner.run(PowerShellQuery.NETWORK_CONFIGURATION)
+        ps_rows = parse_json_rows(ps_result)
+        configs_by_mac = {
+            str(r.get("MAC", "")).upper().replace("-", ":"): r
+            for r in ps_rows
+            if r.get("MAC")
+        }
+
         adapters: list[dict[str, Any]] = []
         for name, values in addresses.items():
-            ipv4 = [item.address for item in values if item.family == socket.AF_INET]
-            mac = [
+            ipv4_list = [item.address for item in values if item.family == socket.AF_INET]
+            mac_list = [
                 item.address
                 for item in values
                 if getattr(psutil, "AF_LINK", object()) == item.family
             ]
             stat = stats.get(name)
-            if not ipv4 and not mac:
+            if not ipv4_list and not mac_list:
                 continue
+
+            mac_str = mac_list[0] if mac_list else ""
+            mac_key = mac_str.upper().replace("-", ":")
+            conf = configs_by_mac.get(mac_key, {})
+
+            ipv6_val = conf.get("IPv6") or "No disponible"
+            gateway_val = conf.get("Gateway") or "No disponible"
+            dns_val = conf.get("DNS") or "No disponible"
+
             adapters.append(
                 {
                     "Adaptador": name,
-                    "MAC": mac[0] if mac else "No disponible",
-                    "IPv4": ", ".join(ipv4) if ipv4 else "Sin IPv4",
+                    "MAC": mac_str or "No disponible",
+                    "IPv4": ", ".join(ipv4_list) if ipv4_list else "Sin IPv4",
+                    "IPv6": ipv6_val,
+                    "Puerta de enlace": gateway_val,
+                    "Servidores DNS": dns_val,
                     "Estado": "Conectado" if stat and stat.isup else "Desconectado",
                     "Velocidad": f"{stat.speed} Mbps" if stat and stat.speed else "No disponible",
                 }
             )
+
         connected = sum(1 for item in adapters if item["Estado"] == "Conectado")
-        status = HealthStatus.NORMAL if connected else HealthStatus.WARNING
-        problem = None if connected else "No se detectó un adaptador de red activo"
-        output = "\n".join(
-            f"{a['Adaptador']} | {a['MAC']} | {a['IPv4']} | {a['Estado']} | {a['Velocidad']}"
-            for a in adapters
+
+        primary_ip: str | None = None
+        primary_gw: str | None = None
+        for a in adapters:
+            if a["Estado"] == "Conectado" and a["IPv4"] != "Sin IPv4":
+                primary_ip = a["IPv4"]
+                primary_gw = a.get("Puerta de enlace")
+                break
+        if not primary_ip and connected > 0:
+            for a in adapters:
+                if a["Estado"] == "Conectado":
+                    primary_ip = a["IPv4"] if a["IPv4"] != "Sin IPv4" else None
+                    primary_gw = a.get("Puerta de enlace")
+                    break
+
+        conn_report = self.connectivity_service.check(
+            adapter_connected=connected > 0,
+            local_ip=primary_ip,
+            gateway=primary_gw,
         )
+
+        stages_fact = [
+            {
+                "Etapa": s.stage.value,
+                "Destino": s.target,
+                "Resultado": "OK" if s.succeeded else "Fallo",
+                "Detalle": s.details,
+            }
+            for s in conn_report.stages
+        ]
+
+        facts: dict[str, Any] = {
+            "Adaptadores": adapters,
+            "Conectividad": stages_fact,
+            "Diagnóstico de red": conn_report.problem_title
+            or "Conectividad normal y acceso a Internet verificado",
+        }
+        if conn_report.recommendations:
+            facts["Recomendaciones"] = list(conn_report.recommendations)
+
+        if conn_report.problem_title and "APIPA" in conn_report.problem_title:
+            summary = "APIPA (169.254.x.x) - Sin DHCP"
+            facts["Caso"] = "C1"
+        elif conn_report.problem_title and "DNS" in conn_report.problem_title:
+            summary = "Fallo de resolución DNS"
+            facts["Caso"] = "DNS"
+        elif not connected:
+            summary = "0 adaptadores conectados"
+        elif conn_report.status == HealthStatus.NORMAL:
+            summary = f"{connected} conectado(s) · Conectividad OK"
+        else:
+            summary = f"{connected} conectado(s) · {conn_report.problem_title or 'Advertencia'}"
+
+        evidence_items = [
+            _evidence(
+                "psutil",
+                "psutil.net_if_addrs() / net_if_stats()",
+                "\n".join(
+                    f"{a['Adaptador']} | {a['MAC']} | IPv4: {a['IPv4']} | GW: {a['Puerta de enlace']} | Estado: {a['Estado']}"
+                    for a in adapters
+                ),
+            ),
+        ]
+        if ps_result.output or ps_result.error:
+            evidence_items.append(
+                _evidence(
+                    "PowerShell",
+                    "Get-CimInstance Win32_NetworkAdapterConfiguration",
+                    ps_result.output or ps_result.error,
+                    ps_result.exit_code == 0,
+                )
+            )
+
+        connectivity_evidence_text = "\n".join(
+            f"[{'OK' if s.succeeded else 'FALLO'}] {s.stage.value.upper()} -> {s.target}: {s.details}"
+            for s in conn_report.stages
+        )
+        evidence_items.append(
+            _evidence(
+                "ConnectivityService (ping / nslookup)",
+                "Pruebas escalonadas de conectividad",
+                connectivity_evidence_text,
+                conn_report.status == HealthStatus.NORMAL,
+            )
+        )
+
         return ComponentResult(
             self.component,
             "Red",
-            {"Adaptadores": adapters},
-            summary=f"{connected} conectado(s)",
-            status=status,
-            possible_problem=problem,
-            evidence=(_evidence("psutil", "psutil.net_if_addrs() / net_if_stats()", output),),
-        )
-
-
-class PnpCollector:
-    def __init__(
-        self,
-        runner: SafePowerShellRunner,
-        component: ComponentKind,
-        name: str,
-        query: PowerShellQuery,
-    ) -> None:
-        self.runner = runner
-        self.component = component
-        self.name = name
-        self.query = query
-
-    def collect(self) -> ComponentResult:
-        result = self.runner.run(self.query)
-        if result.exit_code != 0:
-            return _ps_failure(self.name, self.component, self.query.value, result.error)
-        rows = parse_json_rows(result)
-        problems = [row for row in rows if str(row.get("Status", "OK")).upper() != "OK"]
-        if self.component is ComponentKind.PROBLEM_DEVICE:
-            problems = rows
-        status = HealthStatus.CRITICAL if problems else HealthStatus.NORMAL
-        problem = f"{len(problems)} dispositivo(s) con error" if problems else None
-        summary = (
-            f"{len(problems)} errores detectados"
-            if self.component is ComponentKind.PROBLEM_DEVICE
-            else f"{len(rows)} disp. · {len(problems)} errores"
-        )
-        normalized_rows = [
-            {
-                "Dispositivo": row.get("FriendlyName") or row.get("InstanceId") or "Sin nombre",
-                "Clase": row.get("Class") or "No disponible",
-                "Estado": row.get("Status") or "No disponible",
-                "ID": row.get("InstanceId") or "No disponible",
-                "Código": row.get("Problem") if row.get("Problem") is not None else "—",
-            }
-            for row in rows
-        ]
-        return ComponentResult(
-            self.component,
-            self.name,
-            {
-                "Dispositivos": normalized_rows,
-                "Total": len(rows),
-                "Con problemas": len(problems),
-            },
+            facts,
             summary=summary,
-            status=status,
-            possible_problem=problem,
-            evidence=(_evidence("PowerShell", self.query.value, result.output or "[]", True),),
+            status=conn_report.status,
+            possible_problem=conn_report.problem_title,
+            evidence=tuple(evidence_items),
         )
 
 
-class DriverCollector:
-    component = ComponentKind.DRIVER
+from hardware_admin.collectors.drivers import DriverCollector
+from hardware_admin.collectors.gpu import GpuCollector
+from hardware_admin.collectors.pnp import PnpDeviceCollector
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
-        self.runner = runner
-
-    def collect(self) -> ComponentResult:
-        result = self.runner.run(PowerShellQuery.DRIVERS)
-        if result.exit_code != 0:
-            return _ps_failure(
-                "Controladores", self.component, "Win32_PnPSignedDriver", result.error
-            )
-        rows = parse_json_rows(result)
-        unsigned = [row for row in rows if row.get("IsSigned") is False]
-        status = HealthStatus.WARNING if unsigned else HealthStatus.NORMAL
-        return ComponentResult(
-            self.component,
-            "Controladores",
-            {"Controladores": rows, "Consultados": len(rows), "No firmados": len(unsigned)},
-            summary=f"{len(rows)} controladores",
-            status=status,
-            possible_problem=(
-                f"{len(unsigned)} controlador(es) no firmado(s)" if unsigned else None
-            ),
-            evidence=(_evidence("PowerShell", "Win32_PnPSignedDriver", result.output),),
-        )
-
-
-class MonitorGpuCollector:
-    component = ComponentKind.MONITOR_GPU
-
-    def __init__(self, runner: SafePowerShellRunner) -> None:
-        self.runner = runner
-
-    def collect(self) -> ComponentResult:
-        result = self.runner.run(PowerShellQuery.VIDEO_CONTROLLERS)
-        if result.exit_code != 0:
-            return _ps_failure(
-                "Monitor y GPU", self.component, "Win32_VideoController", result.error
-            )
-        rows = parse_json_rows(result)
-        gpu_rows = [row for row in rows if row.get("Tipo") == "GPU"]
-        monitor_rows = [row for row in rows if row.get("Tipo") == "Monitor"]
-        problems = [row for row in rows if str(row.get("Estado", "OK")).upper() != "OK"]
-        status = HealthStatus.CRITICAL if problems else HealthStatus.NORMAL
-        return ComponentResult(
-            self.component,
-            "Monitor y GPU",
-            {"Dispositivos gráficos": rows},
-            summary=f"{len(gpu_rows)} GPU · {len(monitor_rows)} monitor(es)",
-            status=status,
-            possible_problem="Controlador o dispositivo gráfico" if problems else None,
-            evidence=(
-                _evidence("PowerShell", "Get-CimInstance Win32_VideoController", result.output),
-            ),
-        )
+PnpCollector = PnpDeviceCollector
+MonitorGpuCollector = GpuCollector
 
 
 class IoCollector:
@@ -423,14 +387,14 @@ class IoCollector:
         )
 
 
-def build_default_collectors() -> tuple[object, ...]:
+def build_default_collectors() -> tuple[HardwareCollector, ...]:
     runner = SafePowerShellRunner()
     return (
         SystemCollector(runner),
         CpuCollector(runner),
         MemoryCollector(),
         DiskCollector(runner),
-        NetworkCollector(),
+        NetworkCollector(runner),
         PnpCollector(runner, ComponentKind.USB, "USB", PowerShellQuery.USB_PRESENT),
         PnpCollector(runner, ComponentKind.PCI, "PCI / PCIe", PowerShellQuery.PCI_PRESENT),
         DriverCollector(runner),

@@ -39,6 +39,22 @@ class EvidenceRecord:
     succeeded: bool = True
 
 
+class ConnectivityStage(StrEnum):
+    ADAPTER = "adapter"
+    LOCAL_IP = "local_ip"
+    GATEWAY = "gateway"
+    EXTERNAL_IP = "external_ip"
+    DNS = "dns"
+
+
+@dataclass(frozen=True, slots=True)
+class ConnectivityCheckResult:
+    stage: ConnectivityStage
+    target: str
+    succeeded: bool
+    details: str = ""
+
+
 @dataclass(frozen=True, slots=True)
 class ComponentResult:
     component: ComponentKind
