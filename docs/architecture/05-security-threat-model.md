@@ -18,7 +18,7 @@
 |---|---|---|
 | Inyección de comandos | Consultas fijas; `subprocess` sin `shell=True`; sin entrada del usuario | Test de rechazo de comando desconocido |
 | Proceso colgado | Timeout y finalización controlada | Test de timeout |
-| Salida enorme o malformada | Límite de tamaño y validación JSON | Fixtures truncadas/inválidas |
+| Salida enorme o malformada | `MAX_OUTPUT_CHARS` y validación JSON en `parse_json_rows` | `MalformedOutputTests` en `test_powershell.py` y `MalformedOutputScanTests` |
 | Confundir falta de permiso con hardware sano | Estado `ERROR` y mensaje explícito | Test de permiso denegado |
 | Exponer información al exportar | Guardado explícito y aviso de contenido | Prueba de cancelación y revisión manual |
 | Dependencia comprometida | Mínimas dependencias, revisión y archivo de bloqueo antes de entrega | Escaneo de dependencias |

@@ -142,6 +142,20 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
 }
 
 
+#: Techo de la salida que se acepta interpretar. Una respuesta mayor indica que
+#: algo no salió como se esperaba y no compensa intentar parsearla.
+MAX_OUTPUT_CHARS = 1_000_000
+
+
+class MalformedQueryOutput(ValueError):
+    """La consulta terminó bien pero su salida no es un inventario legible.
+
+    Se distingue de una lista vacía a propósito: vacío significa «sin filas»,
+    y esto significa «no se pudo leer». Confundirlos haría pasar un fallo de
+    lectura por ausencia de dispositivos.
+    """
+
+
 class SafePowerShellRunner:
     """Ejecuta sólo consultas enumeradas, sin aceptar fragmentos del usuario."""
 
@@ -190,15 +204,44 @@ class SafePowerShellRunner:
 
 
 def parse_json_rows(result: CommandResult) -> list[dict[str, Any]]:
-    """Normaliza una respuesta JSON como una lista de diccionarios."""
+    """Normaliza una respuesta JSON como una lista de diccionarios.
+
+    Una salida corrupta levanta `MalformedQueryOutput` en lugar de devolver una
+    lista vacía. La distinción importa: una lista vacía significa «la consulta
+    se completó y no hay filas» —el caso «USB ausente» depende de eso—, así que
+    un fallo de lectura no puede disfrazarse de inventario vacío.
+
+    Una salida ausente con código de salida correcto sí es un inventario vacío
+    legítimo: no hubo corrupción, simplemente no hay filas.
+    """
     if result.exit_code != 0 or not result.output:
         return []
-    parsed = json.loads(result.output)
+
+    if len(result.output) > MAX_OUTPUT_CHARS:
+        # No se intenta interpretar una salida desmedida: el coste de parsearla
+        # no compensa, y su tamaño ya indica que algo no salió como se esperaba.
+        raise MalformedQueryOutput(
+            f"La consulta «{result.query.value}» devolvió {len(result.output)} caracteres, "
+            f"por encima del límite de tamaño de {MAX_OUTPUT_CHARS}."
+        )
+
+    try:
+        parsed = json.loads(result.output)
+    except json.JSONDecodeError as exc:
+        raise MalformedQueryOutput(
+            f"La consulta «{result.query.value}» no devolvió JSON válido "
+            f"({exc.msg} en la posición {exc.pos}). "
+            f"Inicio de la salida: {result.output[:120]!r}"
+        ) from exc
+
     if isinstance(parsed, dict):
         return [parsed]
     if isinstance(parsed, list):
         return [row for row in parsed if isinstance(row, dict)]
-    return []
+    raise MalformedQueryOutput(
+        f"La consulta «{result.query.value}» devolvió JSON válido pero no un "
+        f"objeto ni una lista de filas, sino {type(parsed).__name__}."
+    )
 
 
 def powershell_available() -> bool:

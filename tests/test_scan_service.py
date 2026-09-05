@@ -1,7 +1,14 @@
 from unittest import TestCase
 
+from hardware_admin.collectors.pnp import PnpDeviceCollector
 from hardware_admin.diagnostics.engine import RuleBasedDiagnosticEngine
-from hardware_admin.domain.models import ComponentKind, ComponentResult, HealthStatus
+from hardware_admin.domain.models import (
+    ComponentKind,
+    ComponentResult,
+    DiagnosticReport,
+    HealthStatus,
+)
+from hardware_admin.infrastructure.powershell import CommandResult, PowerShellQuery
 from hardware_admin.services.scan_service import ScanService
 
 
@@ -76,3 +83,41 @@ class ScanServiceTests(TestCase):
         self.assertEqual(report.symptom, "se reinicia al jugar")
         self.assertEqual(report.expected_device, "SSD")
         self.assertIn("diagnóstico adicional", report.conclusion)
+
+
+class MalformedOutputScanTests(TestCase):
+    """Criterio de aceptacion de la fase 8, de punta a punta."""
+
+    class _CorruptRunner:
+        def run(self, query: PowerShellQuery) -> CommandResult:
+            return CommandResult(query=query, output="ADVERTENCIA: acceso denegado", exit_code=0)
+
+    def _scan(self) -> DiagnosticReport:
+        collector = PnpDeviceCollector(
+            self._CorruptRunner(), ComponentKind.USB, "USB", PowerShellQuery.USB_PRESENT
+        )
+        service = ScanService(
+            collectors=(collector,), diagnostic_engine=RuleBasedDiagnosticEngine()
+        )
+        with self.assertLogs("hardware_admin.services.scan_service", "ERROR"):
+            return service.scan()
+
+    def test_corrupt_output_becomes_an_error_with_a_legible_detail(self) -> None:
+        result = self._scan().results[0]
+
+        self.assertEqual(result.status, HealthStatus.ERROR)
+        detalle = str(result.facts.get("Detalle", ""))
+        self.assertIn("no devolvió JSON válido", detalle)
+        self.assertIn("usb_present", detalle)
+
+    def test_corrupt_output_is_not_mistaken_for_an_empty_inventory(self) -> None:
+        """La proteccion clave: no puede disfrazarse del caso «USB ausente»."""
+        result = self._scan().results[0]
+
+        self.assertNotEqual(result.facts.get("Caso"), "USB-AUSENTE")
+
+    def test_corrupt_output_is_not_reported_as_damaged_hardware(self) -> None:
+        report = self._scan()
+
+        self.assertFalse(report.has_problems)
+        self.assertEqual(len(report.limitations), 1)

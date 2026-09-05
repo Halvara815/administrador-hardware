@@ -81,16 +81,21 @@ salió de auditar los documentos de arquitectura de principio a fin: son
 controles que la documentación **declara como existentes** y que el código no
 tiene. Se abordan por fases, cada una con sus propias pruebas y gates.
 
-### Fase 8 — Robustez de las consultas
+### Fase 8 — Robustez de las consultas — **COMPLETADA**
 
-| # | Qué | Dónde | Por qué |
-|---|---|---|---|
-| 8.1 | Validar el JSON antes de interpretarlo | `infrastructure/powershell.py` | `parse_json_rows` llama a `json.loads` sin protección: una salida truncada o una línea de advertencia de PowerShell antes del JSON lanza `JSONDecodeError` y tumba el componente entero |
-| 8.2 | Limitar el tamaño de la salida antes de parsearla | `infrastructure/powershell.py` | El [modelo de amenazas](docs/architecture/05-security-threat-model.md) declara «límite de tamaño y validación JSON» como control existente |
-| 8.3 | Fixtures truncadas e inválidas | `tests/test_powershell.py` | Es la «evidencia de prueba» que ese mismo documento dice tener |
+`parse_json_rows` valida la salida antes de interpretarla y levanta
+`MalformedQueryOutput` con el detalle del fallo, en lugar de propagar un
+`JSONDecodeError` crudo. Cubre salida truncada, texto antepuesto por PowerShell,
+JSON escalar y salidas por encima de `MAX_OUTPUT_CHARS`.
 
-**Aceptación:** una salida malformada produce un resultado `ERROR` con detalle
-legible, nunca una excepción sin capturar.
+**La decisión que importa:** un JSON corrupto **no** devuelve una lista vacía.
+Desde la fase 3 una lista vacía significa algo concreto —el caso «USB
+ausente»—, así que un fallo de lectura que devolviera `[]` se disfrazaría de
+inventario vacío legítimo. Hay una prueba que lo impide explícitamente.
+
+**Aceptación verificada:** una salida malformada produce `ERROR` con detalle
+legible, `has_problems` sigue en `False` —no es hardware dañado— y queda
+registrada en las limitaciones del reporte.
 
 ### Fase 9 — Pruebas de los controles declarados
 
