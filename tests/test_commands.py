@@ -1,5 +1,6 @@
 """Pruebas unitarias de seguridad y ejecución de SafeCommandRunner."""
 
+from subprocess import TimeoutExpired
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -90,3 +91,38 @@ class SafeCommandRunnerTests(TestCase):
             self.assertEqual(result.exit_code, 0)
             self.assertIn("142.250.190.46", result.output)
 
+
+
+class NativeTimeoutTests(TestCase):
+    """Control declarado: proceso colgado con finalizacion controlada."""
+
+    @patch("subprocess.run")
+    def test_a_hung_ping_is_reported_as_timed_out(self, run: MagicMock) -> None:
+        run.side_effect = TimeoutExpired(cmd="ping.exe", timeout=5.0)
+
+        result = SafeCommandRunner().ping("8.8.8.8")
+
+        self.assertTrue(result.timed_out)
+        self.assertEqual(result.exit_code, -1)
+        self.assertIn("Tiempo agotado", result.error)
+
+    @patch("subprocess.run")
+    def test_a_partial_output_survives_the_timeout(self, run: MagicMock) -> None:
+        """Lo recogido antes de agotarse el tiempo no se descarta."""
+        run.side_effect = TimeoutExpired(
+            cmd="ping.exe", timeout=5.0, output=b"Respuesta desde 8.8.8.8"
+        )
+
+        result = SafeCommandRunner().ping("8.8.8.8")
+
+        self.assertTrue(result.timed_out)
+        self.assertIn("Respuesta desde", result.output)
+
+    @patch("subprocess.run")
+    def test_a_missing_tool_is_reported_without_crashing(self, run: MagicMock) -> None:
+        run.side_effect = FileNotFoundError("nslookup.exe no encontrado")
+
+        result = SafeCommandRunner().nslookup("google.com")
+
+        self.assertEqual(result.exit_code, -1)
+        self.assertIn("no encontrado", result.error)

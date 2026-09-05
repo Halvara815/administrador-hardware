@@ -1,14 +1,16 @@
 import json
-from subprocess import CompletedProcess
+from subprocess import CompletedProcess, TimeoutExpired
 from unittest import TestCase
 from unittest.mock import patch
 
 from hardware_admin.infrastructure.powershell import (
+    _QUERY_SCRIPTS,
     MAX_OUTPUT_CHARS,
     CommandResult,
     MalformedQueryOutput,
     PowerShellQuery,
     SafePowerShellRunner,
+    UnknownQuery,
     parse_json_rows,
 )
 
@@ -91,5 +93,78 @@ class MalformedOutputTests(TestCase):
     def test_a_failed_query_returns_no_rows_without_raising(self) -> None:
         """Si la consulta ya fallo, el codigo de salida manda; no hay que parsear."""
         result = CommandResult(PowerShellQuery.USB_PRESENT, "basura", 1, error="denegado")
+
+        self.assertEqual(parse_json_rows(result), [])
+
+
+class ClosedCatalogTests(TestCase):
+    """Control declarado: «consultas fijas, sin entrada del usuario»."""
+
+    def test_every_catalogued_query_has_a_script(self) -> None:
+        """Un miembro sin script seria un hueco silencioso en el catalogo."""
+        faltan = [query.value for query in PowerShellQuery if query not in _QUERY_SCRIPTS]
+
+        self.assertEqual(faltan, [])
+
+    @patch("subprocess.run")
+    def test_an_arbitrary_string_is_refused_without_running_anything(
+        self, run: object
+    ) -> None:
+        """Lo esencial: se rechaza ANTES de invocar el interprete."""
+        with self.assertRaises(UnknownQuery) as caught:
+            SafePowerShellRunner().run("Get-Process; Remove-Item C:/")  # type: ignore[arg-type]
+
+        self.assertIn("no pertenece al catálogo", str(caught.exception))
+        run.assert_not_called()  # type: ignore[attr-defined]
+
+    @patch("subprocess.run")
+    def test_the_command_carries_only_the_catalogued_script(self, run: object) -> None:
+        """Nada externo se compone dentro del comando que recibe el interprete.
+
+        Las llaves son sintaxis normal de PowerShell (@{...}), asi que buscarlas
+        no prueba nada. Lo que prueba el control es que el guion enviado sea
+        exactamente el del catalogo, envuelto en la cabecera fija.
+        """
+        run.return_value = CompletedProcess(  # type: ignore[attr-defined]
+            args=[], returncode=0, stdout="[]", stderr=""
+        )
+
+        SafePowerShellRunner().run(PowerShellQuery.CPU_INFO)
+
+        argumentos = run.call_args.args[0]  # type: ignore[attr-defined]
+        self.assertIsInstance(argumentos, list)
+        self.assertEqual(argumentos[0], "powershell.exe")
+        self.assertIn("-NoProfile", argumentos)
+        enviado = argumentos[-1]
+        self.assertIn(_QUERY_SCRIPTS[PowerShellQuery.CPU_INFO], enviado)
+        # Ningun otro guion del catalogo se cuela en la misma invocacion.
+        for query, script in _QUERY_SCRIPTS.items():
+            if query is not PowerShellQuery.CPU_INFO:
+                self.assertNotIn(script, enviado)
+
+
+class TimeoutTests(TestCase):
+    """Control declarado: «proceso colgado → timeout y finalizacion controlada»."""
+
+    @patch("subprocess.run")
+    def test_a_hung_query_is_reported_as_timed_out_not_as_a_crash(
+        self, run: object
+    ) -> None:
+        run.side_effect = TimeoutExpired(cmd="powershell.exe", timeout=15.0)  # type: ignore[attr-defined]
+
+        result = SafePowerShellRunner(timeout_seconds=15.0).run(PowerShellQuery.CPU_INFO)
+
+        self.assertTrue(result.timed_out)
+        self.assertEqual(result.exit_code, -1)
+        self.assertIn("Tiempo agotado", result.error)
+
+    @patch("subprocess.run")
+    def test_a_timed_out_query_yields_no_rows_instead_of_raising(
+        self, run: object
+    ) -> None:
+        """Su codigo de salida manda: no se intenta parsear una salida parcial."""
+        run.side_effect = TimeoutExpired(cmd="powershell.exe", timeout=15.0)  # type: ignore[attr-defined]
+
+        result = SafePowerShellRunner().run(PowerShellQuery.USB_PRESENT)
 
         self.assertEqual(parse_json_rows(result), [])

@@ -8,6 +8,7 @@ from typing import Any
 
 from hardware_admin import __version__
 from hardware_admin.domain.models import DiagnosticReport, HealthStatus
+from hardware_admin.reports._logging import log_export
 
 _STATUS_LABELS = {
     HealthStatus.UNKNOWN: "Sin analizar",
@@ -140,4 +141,5 @@ article h3{{margin:0 0 8px;color:#0b5fc6}} article ol{{margin:8px 0;padding-left
 {"".join(detail_sections)}
 </main></body></html>"""
     path.write_text(document, encoding="utf-8")
+    log_export(path, "html")
     return path

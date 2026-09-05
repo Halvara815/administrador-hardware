@@ -64,10 +64,9 @@ recomendaciones y exportación.
 ### Pendiente
 
 Detallado por fases en el [trabajo pendiente](README.md#trabajo-pendiente).
-La fase 8 (validación del JSON de las consultas) ya está completada.
+Las fases 8 (validación del JSON) y 9 (pruebas de los controles
+declarados y registro de exportaciones) ya están completadas.
 
-- **Fase 9:** pruebas de timeout, de rechazo de consulta fuera de catálogo y
-  registro de la exportación.
 - **Fase 10:** límite total de escaneo de 60 s, presupuesto de red de 30 s e
   identificador de sesión en los registros.
 - **Fase 11:** escalado 100/125/150 %, escaneo de dependencias, protocolo de

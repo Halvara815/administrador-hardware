@@ -97,19 +97,21 @@ inventario vacío legítimo. Hay una prueba que lo impide explícitamente.
 legible, `has_problems` sigue en `False` —no es hardware dañado— y queda
 registrada en las limitaciones del reporte.
 
-### Fase 9 — Pruebas de los controles declarados
+### Fase 9 — Pruebas de los controles declarados — **COMPLETADA**
 
-El [modelo de amenazas](docs/architecture/05-security-threat-model.md) enumera
-controles con su evidencia de prueba. Tres de esas pruebas no existen.
+El [modelo de amenazas](docs/architecture/05-security-threat-model.md) enumeraba
+controles con su evidencia de prueba, y tres de esas pruebas no existían.
 
-| # | Prueba que falta | Control que respalda |
+| # | Prueba | Qué fija |
 |---|---|---|
-| 9.1 | Timeout de consulta | «Proceso colgado → timeout y finalización controlada» |
-| 9.2 | Rechazo de consulta fuera del catálogo | «Inyección de comandos → consultas fijas» |
-| 9.3 | Registro de la exportación: resultado y ruta | [Observabilidad](docs/architecture/07-observability-slo.md) pide «resultado y ruta final de exportación» |
+| 9.1 | `TimeoutTests`, `NativeTimeoutTests` | Una consulta colgada se reporta como agotada, conserva la salida parcial y no revienta; una herramienta ausente tampoco |
+| 9.2 | `ClosedCatalogTests` | Una cadena arbitraria se rechaza con `UnknownQuery` **antes** de invocar el intérprete, y el comando enviado lleva sólo el guion del catálogo |
+| 9.3 | `ExportLoggingTests` | La exportación registra formato, ruta, tamaño y si se anonimizó, y **nunca** el contenido del reporte |
 
-**Aceptación:** cada fila de la tabla de amenazas apunta a una prueba que
-existe y pasa. Mientras no sea así, la tabla afirma más de lo que puede probar.
+El rechazo de consultas fuera de catálogo dejó de apoyarse en un `KeyError`
+accidental del diccionario: ahora es una comprobación explícita con mensaje
+propio. El registro de exportaciones vive en la capa de reportes, no en la
+interfaz, para poder comprobarlo sin abrir ventana.
 
 ### Fase 10 — Objetivos operativos
 

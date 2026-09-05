@@ -16,11 +16,11 @@
 
 | Riesgo | Control | Evidencia de prueba |
 |---|---|---|
-| Inyección de comandos | Consultas fijas; `subprocess` sin `shell=True`; sin entrada del usuario | Test de rechazo de comando desconocido |
-| Proceso colgado | Timeout y finalización controlada | Test de timeout |
+| Inyección de comandos | Catálogo cerrado con rechazo explícito (`UnknownQuery`); `subprocess` sin `shell=True` | `ClosedCatalogTests` en `test_powershell.py` |
+| Proceso colgado | Timeout y finalización controlada | `TimeoutTests` y `NativeTimeoutTests` |
 | Salida enorme o malformada | `MAX_OUTPUT_CHARS` y validación JSON en `parse_json_rows` | `MalformedOutputTests` en `test_powershell.py` y `MalformedOutputScanTests` |
 | Confundir falta de permiso con hardware sano | Estado `ERROR` y mensaje explícito | Test de permiso denegado |
-| Exponer información al exportar | Guardado explícito y aviso de contenido | Prueba de cancelación y revisión manual |
+| Exponer información al exportar | Guardado explícito, identidad omitible y registro sin contenido | `JsonPrivacyTests` y `ExportLoggingTests` |
 | Dependencia comprometida | Mínimas dependencias, revisión y archivo de bloqueo antes de entrega | Escaneo de dependencias |
 
 ## Principio operativo
