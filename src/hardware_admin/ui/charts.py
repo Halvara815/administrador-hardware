@@ -130,6 +130,10 @@ class TimeSeriesChart(ctk.CTkFrame):
             self, height=height, background=theme.TERMINAL, highlightthickness=0, bd=0
         )
         self.canvas.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 6))
+        # Tk no conoce el ancho hasta que dispone el widget: guardamos los datos
+        # y redibujamos cuando llega el tamaño real, y también al redimensionar.
+        self._series: tuple[Sequence[float], ...] = ()
+        self.canvas.bind("<Configure>", self._on_resize)
 
         legend = ctk.CTkFrame(self, fg_color="transparent")
         legend.grid(row=2, column=0, sticky="w", padx=12, pady=(0, 10))
@@ -142,8 +146,16 @@ class TimeSeriesChart(ctk.CTkFrame):
             ).grid(row=0, column=column, padx=(0 if column == 0 else 14, 0))
 
     def update_series(self, series: Sequence[Sequence[float]], peak_label: str) -> None:
-        """Redibuja el grafico. Se llama solo desde el hilo principal."""
+        """Guarda las series y las dibuja. Se llama solo desde el hilo principal."""
+        self._series = tuple(series)
         self.peak_label.configure(text=peak_label)
+        self._render()
+
+    def _on_resize(self, _event: Any) -> None:
+        self._render()
+
+    def _render(self) -> None:
+        series = self._series
         self.canvas.delete("all")
         width = max(self.canvas.winfo_width(), 1)
         height = max(self.canvas.winfo_height(), 1)
@@ -243,10 +255,21 @@ class BarListChart(_ChartFrame):
             highlightthickness=0, bd=0,
         )
         self.canvas.grid(row=1, column=0, sticky="ew", padx=12, pady=(0, 12))
+        # Mismo motivo que en el gráfico de series: el ancho real llega después.
+        self._bars: tuple[Bar, ...] = ()
+        self.canvas.bind("<Configure>", self._on_resize)
 
     def update_bars(self, bars: Sequence[Bar], value_label: str = "") -> None:
-        """Redibuja la lista. Una lista vacia deja el grafico en blanco."""
+        """Guarda las barras y las dibuja. Una lista vacia la deja en blanco."""
+        self._bars = tuple(bars)
         self.value_label.configure(text=value_label)
+        self._render()
+
+    def _on_resize(self, _event: Any) -> None:
+        self._render()
+
+    def _render(self) -> None:
+        bars = self._bars
         self.canvas.delete("all")
         if not bars:
             self.canvas.configure(height=self.ROW_HEIGHT)
