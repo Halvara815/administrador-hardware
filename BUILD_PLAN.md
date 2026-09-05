@@ -50,64 +50,75 @@ la mantenibilidad. Elegimos extender los módulos existentes con contratos compa
 
 ## Estado observado y brechas
 
-La tabla identifica capacidades de base y ampliaciones. El estado de fases debe
+La tabla recoge el estado alcanzado por área. El estado de fases debe
 contrastarse con las pruebas del commit que vaya a distribuirse.
 
-| Área | Base disponible | Trabajo pendiente |
+| Área | Estado alcanzado | Pendiente |
 |---|---|---|
-| Interfaz | 12 opciones, análisis general/sección, consola | 15 opciones, Salir, síntoma y recomendaciones |
-| CPU | Modelo, núcleos y clasificación de Fase 1 | Mantener pruebas de bordes y regresión |
-| RAM | Total/disponible/uso y clasificación de Fase 1 | Mantener umbrales 70/90 y casos de regresión |
-| Discos | psutil y Get-Disk | Get-PhysicalDisk/Get-Volume, asociaciones, tipo y recomendaciones |
-| Red | MAC, IPv4, estado, velocidad | IPv6, gateway, DNS, APIPA y pruebas escalonadas |
-| PnP | USB/PCI presentes e ID | Relación dispositivo-driver-volumen y diagnóstico localizado |
-| GPU | Nombre, driver, memoria reportada | VideoProcessor, límites WMI, caso de síntomas con estado OK |
-| Motor | Reglas básicas y conclusión | Recomendaciones estructuradas y cinco casos integradores |
-| Monitorización | Muestra breve de E/S | Muestreo periódico acotado, detener y datos con fecha |
-| Reportes | HTML | JSON obligatorio elegido; TXT adicional, equipo/usuario/recomendaciones |
-| Distribución | EXE y ZIP | Manual de usuario, notas de versión, licencias de terceros y validación en equipo limpio |
+| Interfaz | 15 apartados más Salir, análisis general/sección, consola, síntoma | — |
+| CPU | Modelo, núcleos, medidor y barras por núcleo; umbrales 70/90 | — |
+| RAM | Total/disponible/uso, gráfico de asignación; umbrales 70/90 | — |
+| Discos | Get-PhysicalDisk/Get-Volume, asociación por Get-Partition, tipo de medio | — |
+| Red | IPv6, puerta de enlace, DNS, APIPA y pruebas escalonadas | — |
+| PnP | Diagnóstico localizado C2/C3, USB ausente y USB sin volumen | — |
+| GPU | VideoProcessor, límites WMI y caso de síntoma con estado OK | — |
+| Motor | Recomendaciones estructuradas y los casos integradores C1–C5 | — |
+| Monitorización | Muestreo de 1 s, buffer de 300, parada explícita y gráficos | — |
+| Reportes | HTML, JSON con `schema_version` y TXT; identidad omitible | — |
+| Distribución | EXE con runtime propio, ZIP con licencias y huella SHA-256 | **Validación en equipo limpio** |
+| Evidencia | Pruebas automatizadas con fixtures simulados | **Protocolo PR-01…PR-18 con hardware físico** |
 
-## Estructura objetivo, no creada todavía
+## Estructura del proyecto
 
-Los archivos con [nuevo] son propuestas. Los actuales se extenderán por fases.
+Esta es la estructura real del repositorio. No se crearon `cpu.py`, `memory.py`
+ni `network.py`: esas mediciones siguen en `core.py`, que alcanzó paridad sin
+necesidad de dividirse. Lo marcado [futuro] pertenece a slices no iniciados.
 
 ```text
 src/hardware_admin/
-  main.py                         entrada y título visible futuro
-  app_factory.py                  composición de servicios
+  main.py                       entrada de la aplicación
+  app_factory.py                composición de servicios
+  resources.py                  rutas de recursos empaquetados
   domain/
-    models.py                     evidencia, dispositivo, resultado y reporte
+    models.py                   evidencia, resultado, reporte y recomendación
   collectors/
-    core.py                       compatibilidad durante extracción gradual
-    cpu.py, memory.py             [nuevos] mediciones por componente
-    storage.py, network.py        [nuevos] volúmenes/adaptadores
-    pnp.py, gpu.py, drivers.py    [nuevos] identidad y asociaciones
+    base.py                     protocolo común de recolector
+    core.py                     sistema, CPU, RAM, red y E/S; alias de compatibilidad
+    storage.py                  volúmenes, discos físicos y asociación USB
+    pnp.py                      USB, PCI y dispositivos con problemas
+    gpu.py                      GPU y monitores
+    drivers.py                  controladores firmados
   infrastructure/
-    powershell.py                 catálogo CIM/PnP/Storage/Net
-    commands.py                   [nuevo] CMD/herramientas con argumentos cerrados
+    powershell.py               catálogo cerrado CIM/PnP/Storage/Net
+    commands.py                 ipconfig, ping, nslookup y arp con shell=False
+    logging_setup.py            registro local rotativo
   diagnostics/
-    engine.py                     conclusión global y alcance
-    rules.py                      existente; clasificación central comprobable
-    recommendations.py            [nuevo] causa, pasos y fundamento
+    engine.py                   conclusión global y casos integradores
+    rules.py                    clasificación central por umbrales
+    recommendations.py          causa, pasos, fundamento y comprobación
   services/
-    scan_service.py                un diagnóstico activo, progreso, errores
-    connectivity_service.py       [nuevo] adaptador → IP → gateway → IP externa → DNS
-    monitoring_service.py         [nuevo] muestras acotadas y parada
+    scan_service.py             un diagnóstico activo, progreso y errores
+    connectivity_service.py     adaptador → IP → gateway → IP externa → DNS
+    monitoring_service.py       muestreo acotado con parada explícita
   reports/
-    html_report.py                conservar
-    json_report.py, txt_report.py [nuevos] exportaciones del producto
+    html_report.py              reporte navegable
+    json_report.py              esquema versionado, identidad omitible
+    txt_report.py               texto plano legible sin herramientas
   ui/
-    main_window.py                 maqueta existente ampliada
-    theme.py, icons.py             conservar estilo
+    main_window.py              ventana, menú de 15 apartados y paneles
+    charts.py                   series de tiempo, medidor y barras
+    theme.py, icons.py          paleta e iconos vectoriales
 docs/
-  architecture/                   decisiones y contratos
-  REQUIREMENTS_TRACEABILITY.md    evidencia histórica y enlace al nuevo alcance
-  PRODUCT_REQUIREMENTS.md      requisitos funcionales y aceptación
-  research/                       [futuro] fichas bibliográficas y marco conceptual
-  evidence/                       [futuro] pruebas reales consentidas
-  USER_GUIDE.md                    [futuro] guía de uso y solución de problemas
-tests/                            bordes, casos integradores, comandos y exportaciones
-scripts/                          build y futuro ensamblador de entrega
+  architecture/                 decisiones y contratos
+  evidence/                     protocolo de pruebas reales
+  superpowers/                  diseños y planes de las rebanadas de fase 4
+  USER_GUIDE.md                 guía de uso, datos y solución de problemas
+  PRODUCT_REQUIREMENTS.md       requisitos funcionales y aceptación
+  REQUIREMENTS_TRACEABILITY.md  evidencia histórica y alcance
+  research/                     [futuro] fichas bibliográficas del asesor E1–E8
+tests/                          bordes, casos integradores, comandos y exportaciones
+scripts/                        build reproducible y utilidades
+packaging/                      especificación de PyInstaller
 ```
 
 Los módulos adicionales de asesoría están especificados en
@@ -244,9 +255,9 @@ Recuperación: reiniciar app y repetir análisis; los reportes exportados no se 
 
 ## Fases ejecutables
 
-Las Fases 1, 2 y 3 están completadas; las demás están **NO INICIADAS**. Cada fase debe
-completar medición → regla → UI → reporte → prueba correspondiente antes de
-avanzar; no crear carpetas vacías masivamente.
+**Las siete fases están implementadas.** Cada una completó medición → regla →
+UI → reporte → prueba antes de avanzar. Quedan dos verificaciones que exigen
+intervención humana y se detallan al final de la tabla.
 
 | Fase | Cambio y módulos | Pruebas/aceptación | Recuperación |
 |---|---|---|---|

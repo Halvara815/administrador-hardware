@@ -1,5 +1,12 @@
 # Revisión de preparación para entrega
 
+> **Alcance de esta revisión: la base v0.1.0 del 2026-09-04, con doce opciones.**
+> Las fases 4 a 7 —monitorización, gráficos, recomendaciones, menú de quince
+> apartados, exportación JSON/TXT, documentación y empaquetado— son posteriores
+> y **no están certificadas por esta revisión**. La evidencia histórica se
+> conserva con su alcance y fecha; no acredita funciones añadidas después ni
+> preparación comercial. Estado vigente en [BUILD_PLAN.md](../../BUILD_PLAN.md).
+
 - Fecha: 2026-09-04
 - Owner: equipo del proyecto
 - Resultado: **LISTO PARA ENTREGA INICIAL EN WINDOWS**

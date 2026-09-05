@@ -1,5 +1,10 @@
 # Architecture 0
 
+> **Documento histórico.** Registra el punto de partida del proyecto, cuando la
+> carpeta estaba vacía. **No describe el estado actual**: consulta
+> [BUILD_PLAN.md](../../BUILD_PLAN.md) para el estado por fases y
+> [USER_GUIDE.md](../USER_GUIDE.md) para lo que hace hoy la aplicación.
+
 ## Evidencia observada
 
 - La carpeta del proyecto estaba vacía al iniciar la estructuración.
