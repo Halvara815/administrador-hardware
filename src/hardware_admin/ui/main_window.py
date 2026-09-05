@@ -136,6 +136,39 @@ MONITORING_NET_SPECS: tuple[SeriesSpec, ...] = (
 )
 
 
+#: Tamaño con el que abre la ventana cuando la pantalla lo permite.
+PREFERRED_SIZE = (1580, 900)
+#: Tamaño mínimo deseable; se recorta si la pantalla no da para tanto.
+MINIMUM_SIZE = (1180, 720)
+#: Margen reservado para la barra de tareas y el marco de la ventana.
+SCREEN_MARGIN = (0, 80)
+
+
+def fit_window(
+    screen_width: int,
+    screen_height: int,
+    scaling: float = 1.0,
+    preferred: tuple[int, int] = PREFERRED_SIZE,
+    minimum: tuple[int, int] = MINIMUM_SIZE,
+) -> tuple[tuple[int, int], tuple[int, int]]:
+    """Ajusta el tamaño de la ventana a la pantalla y al escalado del sistema.
+
+    Devuelve la geometría inicial y el tamaño mínimo, ambos en unidades
+    lógicas de Tk. Con escalado al 125 % o 150 % un mínimo fijo de 1180x720
+    ocuparía 1475x900 o 1770x1080 píxeles físicos, imposible en la pantalla
+    de 1366x768 que fija el requisito: el usuario no podría encoger la ventana
+    hasta que cupiera. Por eso el mínimo también se recorta.
+    """
+    factor = max(scaling, 0.1)
+    usable_width = max(screen_width - SCREEN_MARGIN[0], 320)
+    usable_height = max(screen_height - SCREEN_MARGIN[1], 240)
+    max_logical = (int(usable_width / factor), int(usable_height / factor))
+
+    geometry = (min(preferred[0], max_logical[0]), min(preferred[1], max_logical[1]))
+    smallest = (min(minimum[0], geometry[0]), min(minimum[1], geometry[1]))
+    return geometry, smallest
+
+
 def series_for(
     samples: Sequence[Sample],
 ) -> tuple[list[float], list[float], list[float], list[float]]:
@@ -588,8 +621,15 @@ class HardwareAdminApp(ctk.CTk):
         icon_path = resource_path("assets", "app-icon.ico")
         if icon_path.exists():
             self.iconbitmap(default=str(icon_path))
-        self.geometry("1580x900")
-        self.minsize(1180, 720)
+        # La navegación es desplazable, así que la ventana puede encogerse hasta
+        # caber en la pantalla objetivo con cualquiera de los escalados soportados.
+        geometry, smallest = fit_window(
+            self.winfo_screenwidth(),
+            self.winfo_screenheight(),
+            scaling=ctk.ScalingTracker.get_window_scaling(self),
+        )
+        self.geometry(f"{geometry[0]}x{geometry[1]}")
+        self.minsize(*smallest)
         self.grid_columnconfigure(0, weight=1)
         self.grid_rowconfigure(1, weight=1)
 

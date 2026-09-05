@@ -133,14 +133,24 @@ pendientes, pero una consulta ya en marcha no se puede interrumpir. Su límite
 propio es de 15 s, así que el escaneo puede extenderse hasta esa cola antes de
 devolver los resultados parciales.
 
-### Fase 11 — Verificación de entorno
+### Fase 11 — Verificación de entorno — **PARCIAL**
 
-| # | Qué | Nota |
+| # | Qué | Estado |
 |---|---|---|
-| 11.1 | Escalado 100 %, 125 % y 150 % | [Requisito no funcional](docs/architecture/02-nfr-capacity.md) sin tratamiento explícito ni evidencia |
-| 11.2 | Escaneo de dependencias en CI | Control declarado en el modelo de amenazas; no hay CI |
-| 11.3 | [Protocolo PR-01…PR-18](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) | Requiere hardware físico; **no automatizable** |
-| 11.4 | Validación del EXE en un equipo limpio | Requiere una segunda máquina; **no automatizable** |
+| 11.1 | Escalado 100 %, 125 % y 150 % | **Hecho.** `fit_window` ajusta geometría y mínimo a la pantalla y al escalado |
+| 11.2 | Escaneo de dependencias | **Hecho.** `pip-audit` sobre `requirements.lock`, en CI y en las dependencias de desarrollo |
+| 11.3 | [Protocolo PR-01…PR-18](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md) | **Pendiente.** Requiere hardware físico; no automatizable |
+| 11.4 | Validación del EXE en un equipo limpio | **Pendiente.** Requiere una segunda máquina; no automatizable |
+
+**Lo que 11.1 corrigió:** el mínimo de la ventana era fijo en 1180×720. Con
+escalado al 125 % eso ocupa 1475×900 píxeles físicos y al 150 % son 1770×1080:
+en la pantalla de 1366×768 que fija el requisito, el usuario **no podía encoger
+la ventana hasta que cupiera**. Ahora tanto la geometría inicial como el mínimo
+se recortan a lo que la pantalla admite, y la navegación ya era desplazable.
+
+**Sobre 11.2:** el flujo de [CI](.github/workflows/ci.yml) corre en
+`windows-latest`, no en Linux: las consultas usan PowerShell, CIM y PnP, así
+que probarlas en otro sistema no verificaría lo que se distribuye.
 
 ### Fuera del plan de fases
 

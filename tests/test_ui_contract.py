@@ -8,9 +8,11 @@ from hardware_admin.ui.main_window import (
     MONITORING_DISK_SPECS,
     MONITORING_NET_SPECS,
     NAV_ITEMS,
+    PREFERRED_SIZE,
     SECTION_NAMES,
     adapter_bars,
     core_bars,
+    fit_window,
     series_for,
     volume_bars,
 )
@@ -134,3 +136,52 @@ class SectionChartContractTests(TestCase):
         self.assertEqual(volume_bars({}), [])
         self.assertEqual(adapter_bars({}), [])
         self.assertEqual(core_bars({"_nucleos": "no disponible"}), [])
+
+
+class WindowFitTests(TestCase):
+    """Requisito no funcional: 1366x768 con escalado 100 %, 125 % y 150 %."""
+
+    SCREEN = (1366, 768)
+
+    def test_at_100_percent_the_preferred_size_is_capped_to_the_screen(self) -> None:
+        geometria, minima = fit_window(*self.SCREEN, scaling=1.0)
+
+        self.assertLessEqual(geometria[0], self.SCREEN[0])
+        self.assertLessEqual(geometria[1], self.SCREEN[1])
+        self.assertLessEqual(minima[0], geometria[0])
+        self.assertLessEqual(minima[1], geometria[1])
+
+    def test_the_window_fits_the_target_screen_at_every_required_scaling(self) -> None:
+        """En pixeles fisicos la ventana nunca puede exceder la pantalla."""
+        for escalado in (1.0, 1.25, 1.5):
+            with self.subTest(escalado=escalado):
+                geometria, minima = fit_window(*self.SCREEN, scaling=escalado)
+
+                self.assertLessEqual(geometria[0] * escalado, self.SCREEN[0])
+                self.assertLessEqual(geometria[1] * escalado, self.SCREEN[1])
+                # Y sobre todo: el usuario debe poder encogerla hasta que quepa.
+                self.assertLessEqual(minima[0] * escalado, self.SCREEN[0])
+                self.assertLessEqual(minima[1] * escalado, self.SCREEN[1])
+
+    def test_a_large_screen_keeps_the_preferred_size(self) -> None:
+        """En una pantalla amplia no se recorta nada."""
+        geometria, _ = fit_window(2560, 1440, scaling=1.0)
+
+        self.assertEqual(geometria, PREFERRED_SIZE)
+
+    def test_the_minimum_never_exceeds_the_geometry(self) -> None:
+        """Un minimo mayor que la ventana la haria inmanejable."""
+        for ancho, alto, escalado in ((1366, 768, 1.5), (1024, 600, 1.0), (3840, 2160, 2.0)):
+            with self.subTest(pantalla=(ancho, alto), escalado=escalado):
+                geometria, minima = fit_window(ancho, alto, scaling=escalado)
+
+                self.assertLessEqual(minima[0], geometria[0])
+                self.assertLessEqual(minima[1], geometria[1])
+
+    def test_an_absurd_screen_still_yields_a_usable_window(self) -> None:
+        """Ante datos improbables se devuelve algo manejable, no cero."""
+        geometria, minima = fit_window(0, 0, scaling=1.0)
+
+        self.assertGreater(minima[0], 0)
+        self.assertGreater(minima[1], 0)
+        self.assertLessEqual(minima[0], geometria[0])
