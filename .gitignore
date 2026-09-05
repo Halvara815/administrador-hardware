@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 .cache/
 .pytest_cache/
+.pytest_cache_new/
+scratch/
 .mypy_cache/
 .ruff_cache/
 .venv/
