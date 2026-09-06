@@ -928,3 +928,34 @@ class ThermalVerticalSliceIntegrationTests(TestCase):
             content = out_file.read_text(encoding="utf-8")
             self.assertIn("Monitor y GPU", content)
             self.assertIn("Telemetría térmica GPU", content)
+
+    def test_thermal_dashboard_dialog_lifecycle_in_app(self) -> None:
+        """Verifica que el botón de dashboard térmico y la ventana hija abren y cierran sin excepción."""
+        import tkinter
+        try:
+            root = tkinter.Tk()
+            root.destroy()
+        except tkinter.TclError:
+            self.skipTest("Requiere una sesión gráfica para crear ventanas Tk")
+
+        from hardware_admin.app_factory import build_scan_service
+        from hardware_admin.ui.main_window import HardwareAdminApp, ThermalDashboardWindow
+
+        app = HardwareAdminApp(build_scan_service())
+        try:
+            app.update_idletasks()
+            self.assertTrue(app.thermal_dashboard_button.winfo_exists())
+            self.assertIn("Temperaturas y sensores", app.thermal_dashboard_button.cget("text"))
+
+            app.open_thermal_dashboard()
+            app.update_idletasks()
+            self.assertIsNotNone(app.thermal_window)
+            self.assertIsInstance(app.thermal_window, ThermalDashboardWindow)
+            self.assertTrue(app.thermal_window.winfo_exists())
+            self.assertEqual(app.thermal_window.title(), "Temperaturas y sensores")
+
+            app.thermal_window.destroy()
+            app.update_idletasks()
+            self.assertFalse(app.thermal_window.winfo_exists())
+        finally:
+            app.destroy()

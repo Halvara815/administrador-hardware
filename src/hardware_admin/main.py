@@ -56,6 +56,11 @@ def main() -> None:
     app = HardwareAdminApp(build_scan_service())
     if args.smoke_test:
         app.update_idletasks()
+        app.open_thermal_dashboard()
+        app.update_idletasks()
+        if app.thermal_window is not None:
+            app.thermal_window.destroy()
+        app.update_idletasks()
         print(app.export_debug_state())
         app.destroy()
         return
