@@ -12,7 +12,7 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **229 passed, 8 skipped, 1 warning, 29 subtests passed** (237 pruebas totales evaluadas en este suite);
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **231 passed, 8 skipped, 1 warning, 29 subtests passed** (total: 239 pruebas evaluadas);
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
@@ -74,7 +74,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. pytest ejecuta 229 passed, 8 skipped, 1 warning y 29 subtests passed (237 pruebas totales evaluadas en este suite); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
+1. pytest ejecuta 231 passed, 8 skipped, 1 warning y 29 subtests passed (total: 239 pruebas evaluadas); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
