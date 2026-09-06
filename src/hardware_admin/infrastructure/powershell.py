@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import threading
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -250,6 +251,7 @@ class SafePowerShellRunner:
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
         self._cache: dict[PowerShellQuery, CommandResult] = {}
+        self._inflight: dict[PowerShellQuery, Future[CommandResult]] = {}
         self._lock = threading.Lock()
 
     def clear_cache(self) -> None:
@@ -262,11 +264,6 @@ class SafePowerShellRunner:
         self.clear_cache()
 
     def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
-        if use_cache:
-            with self._lock:
-                if query in self._cache:
-                    return self._cache[query]
-
         # Comprobación explícita antes de tocar el intérprete: el catálogo es la
         # única fuente de comandos, y un fallo de búsqueda no debe parecer un
         # accidente del diccionario.
@@ -275,6 +272,39 @@ class SafePowerShellRunner:
             raise UnknownQuery(
                 f"La consulta {query!r} no pertenece al catálogo cerrado y no se ejecuta."
             )
+
+        if not use_cache:
+            return self._execute_query(query, script)
+
+        with self._lock:
+            if query in self._cache:
+                return self._cache[query]
+            if query in self._inflight:
+                future = self._inflight[query]
+                is_leader = False
+            else:
+                future = Future()
+                self._inflight[query] = future
+                is_leader = True
+
+        if not is_leader:
+            return future.result()
+
+        try:
+            res = self._execute_query(query, script)
+        except BaseException as exc:
+            with self._lock:
+                self._inflight.pop(query, None)
+                future.set_exception(exc)
+            raise
+        else:
+            with self._lock:
+                self._cache[query] = res
+                self._inflight.pop(query, None)
+                future.set_result(res)
+            return res
+
+    def _execute_query(self, query: PowerShellQuery, script: str) -> CommandResult:
         complete_script = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();"
             "$ErrorActionPreference='Stop';"
@@ -302,28 +332,16 @@ class SafePowerShellRunner:
             )
         except subprocess.TimeoutExpired as exc:
             partial = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else ""
-            res = CommandResult(query, partial or "", -1, timed_out=True, error="Tiempo agotado")
-            if use_cache:
-                with self._lock:
-                    self._cache[query] = res
-            return res
+            return CommandResult(query, partial or "", -1, timed_out=True, error="Tiempo agotado")
         except OSError as exc:
-            res = CommandResult(query, "", -1, error=str(exc))
-            if use_cache:
-                with self._lock:
-                    self._cache[query] = res
-            return res
+            return CommandResult(query, "", -1, error=str(exc))
 
-        res = CommandResult(
+        return CommandResult(
             query=query,
             output=completed.stdout.strip(),
             exit_code=completed.returncode,
             error=completed.stderr.strip(),
         )
-        if use_cache:
-            with self._lock:
-                self._cache[query] = res
-        return res
 
 
 def parse_json_rows(result: CommandResult) -> list[dict[str, Any]]:

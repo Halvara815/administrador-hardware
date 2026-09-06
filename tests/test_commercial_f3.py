@@ -1,6 +1,8 @@
 """Pruebas unitarias y de integración de la Fase F3 Comercial: Sensores y comportamiento térmico."""
 
 import tempfile
+import threading
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -737,6 +739,109 @@ class ThermalSnapshotAndDeduplicationTests(TestCase):
 
         self.assertEqual(len(report.results), 1)
         self.assertEqual(report.results[0].component, ComponentKind.CPU)
+
+    def test_safe_powershell_runner_concurrent_requests_execute_once(self) -> None:
+        """Hilos concurrentes que solicitan la misma consulta esperan y ejecutan una sola vez."""
+        barrier = threading.Barrier(3)
+        exec_count = {"count": 0}
+
+        class ConcurrentRunner(SafePowerShellRunner):
+            def _execute_query(self, query: PowerShellQuery, script: str) -> CommandResult:
+                exec_count["count"] += 1
+                time.sleep(0.05)
+                return mock_cmd_result('[{"Result":"OK"}]', query)
+
+        runner = ConcurrentRunner()
+        results: list[CommandResult] = [None] * 3  # type: ignore[list-item]
+
+        def worker(index: int) -> None:
+            barrier.wait(timeout=3.0)
+            results[index] = runner.run(PowerShellQuery.STORAGE_RELIABILITY)
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5.0)
+
+        self.assertEqual(exec_count["count"], 1)
+        self.assertEqual(len(results), 3)
+        self.assertIsNotNone(results[0])
+        self.assertEqual(results[0], results[1])
+        self.assertEqual(results[1], results[2])
+
+    def test_deterministic_race_condition_storage_reliability_during_scan(self) -> None:
+        """Sincroniza StorageCollector y StorageThermalProvider con una barrera para forzar
+        la solicitud concurrente de STORAGE_RELIABILITY dentro de un mismo scan():
+        garantiza exactamente 1 ejecución nativa y que ambos reciben el resultado correcto.
+        """
+        barrier = threading.Barrier(2)
+        native_calls = {"calls": 0}
+
+        class ConcurrentTestRunner(SafePowerShellRunner):
+            def _execute_query(self, query: PowerShellQuery, script: str) -> CommandResult:
+                if query == PowerShellQuery.STORAGE_RELIABILITY:
+                    native_calls["calls"] += 1
+                    time.sleep(0.05)  # Simular latencia de PowerShell
+                    return mock_cmd_result(
+                        '[{"FriendlyName":"NVMe Concurrent","Temperature":44,"DeviceId":0}]',
+                        PowerShellQuery.STORAGE_RELIABILITY,
+                    )
+                if query == PowerShellQuery.PHYSICAL_DISKS:
+                    return mock_cmd_result(
+                        '[{"DeviceId":0,"FriendlyName":"NVMe Concurrent","MediaType":"SSD","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                        PowerShellQuery.PHYSICAL_DISKS,
+                    )
+                if query == PowerShellQuery.DISKS:
+                    return mock_cmd_result(
+                        '[{"Number":0,"FriendlyName":"NVMe Concurrent","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                        PowerShellQuery.DISKS,
+                    )
+                if query == PowerShellQuery.VOLUMES:
+                    return mock_cmd_result(
+                        '[{"DriveLetter":"C","FileSystem":"NTFS","Size":500000000000,"SizeRemaining":300000000000,"HealthStatus":"Healthy"}]',
+                        PowerShellQuery.VOLUMES,
+                    )
+                return mock_cmd_result('[]', query)
+
+        runner = ConcurrentTestRunner()
+        original_run = runner.run
+
+        def synced_run(query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+            if query == PowerShellQuery.STORAGE_RELIABILITY:
+                try:
+                    barrier.wait(timeout=3.0)
+                except threading.BrokenBarrierError:
+                    pass
+            return original_run(query, use_cache=use_cache)
+
+        runner.run = synced_run  # type: ignore[assignment]
+
+        storage_thermal = StorageThermalProvider(runner=runner)
+        storage_collector = StorageCollector(runner)
+        system_collector = SystemCollector(runner, thermal_provider=storage_thermal)
+
+        engine = RuleBasedDiagnosticEngine()
+        service = ScanService(
+            collectors=(storage_collector, system_collector),
+            diagnostic_engine=engine,
+        )
+
+        with patch("psutil.disk_partitions", return_value=[]), \
+             patch("psutil.disk_usage", side_effect=OSError):
+            report = service.scan()
+
+        # 1. Verifica exactamente 1 ejecución nativa
+        self.assertEqual(native_calls["calls"], 1)
+
+        # 2. Verifica que StorageCollector recibió el resultado de STORAGE_RELIABILITY
+        disk_res = next(r for r in report.results if r.component == ComponentKind.DISK)
+        self.assertTrue(any("NVMe Concurrent" in str(d) for d in disk_res.facts.get("Discos físicos", [])))
+
+        # 3. Verifica que StorageThermalProvider (en SystemCollector) recibió la telemetría térmica
+        sys_res = next(r for r in report.results if r.component == ComponentKind.SYSTEM)
+        sensors = sys_res.facts.get("Sensores térmicos del equipo", [])
+        self.assertTrue(any("NVMe Concurrent" in s["Origen"] and "44" in s["Temperatura"] for s in sensors))
 
 
 class ThermalVerticalSliceIntegrationTests(TestCase):
