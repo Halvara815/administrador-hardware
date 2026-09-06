@@ -114,18 +114,24 @@ class ThermalSensorProvider(ABC):
     def read_temperatures(self) -> Sequence[ThermalReading]:
         """Obtiene lecturas instantáneas seguras sin bloquear ni generar falsas alertas."""
         ...
+
+    def reset_session(self) -> None:
+        """Reinicia el estado de sesión si el proveedor almacena capturas temporales."""
+        ...
 ```
 
 ### Proveedores implementados:
 1. `NullThermalProvider`: fallback canónico que devuelve cobertura explícita no soportada.
-2. `WmiThermalZoneProvider`: consulta ACPI con parseo seguro de dK a Celsius y degradación por permisos.
-3. `StorageThermalProvider`: reutiliza la evidencia F2 de `Get-StorageReliabilityCounter`.
-4. `NvidiaGpuThermalProvider`: consulta oficial estricta a `nvidia-smi` en rutas del sistema protegidas.
+2. `WmiThermalZoneProvider`: consulta ACPI con parseo seguro de dK a Celsius y degradación por permisos (`target_hardware="THERMAL_ZONE"`, neutral para CPU).
+3. `StorageThermalProvider`: reutiliza la evidencia F2 de `Get-StorageReliabilityCounter` sin duplicar consultas.
+4. `NvidiaGpuThermalProvider`: consulta oficial estricta a `nvidia-smi` en rutas del sistema protegidas con reporte de `fan_percent`.
+5. `ThermalSnapshotProvider`: almacena la captura inmutable por escaneo y se reinicia de forma determinista mediante `reset_session()` al inicio de cada llamada a `ScanService.scan()`.
 
 ---
 
 ## 5. Decisión y Reglas de Rollback
 
-- **Decisión**: Se implementa la **Alternativa C (Híbrido Especializado)** con interfaz `ThermalSensorProvider`.
+- **Decisión**: Se implementa la **Alternativa C (Híbrido Especializado)** con interfaz `ThermalSensorProvider` y control de ciclo de vida en `ScanService`.
+- **Frontera de Sesión**: `ScanService.scan()` reinicia deterministamente las instancias compartidas de `ThermalSnapshotProvider` y `SafePowerShellRunner` al iniciar cada diagnóstico, garantizando cero consultas duplicadas dentro de una sesión y cero datos obsoletos entre sesiones consecutivas (validado en commit `a76aaca242f51140125193dabcd56e1833f4198f`).
 - **Procedimiento de Rollback**: Para deshabilitar la telemetría térmica o volver a la línea base previa, basta con instanciar `NullThermalProvider` en `ScanService` y en los recolectores de diagnóstico, devolviendo de inmediato `NOT_SUPPORTED` sin ejecutar consultas WMI térmicas ni `nvidia-smi`.
 - **Fase F4**: Permanece **ESTRICTAMENTE NO INICIADA**.

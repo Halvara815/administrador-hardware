@@ -12,14 +12,14 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **219 passed, 8 skipped, 29 subtests passed**;
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **237 passed, 29 subtests passed** (equivalente a 229 passed, 8 skipped en entornos sin display);
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `ea8689066cee54fd990d479b84135019bd3a53981d7fa0ff81cb4f19cbfa75e3`
-  - Fecha de compilación (EXE): `2026-09-05T18:18:27-06:00`
+  - SHA-256 (EXE): `bfbde6839f23367e387c226a980cef4b0289b5d80ae44d3f8fad4a5dd6c2eeb4`
+  - Fecha de compilación (EXE): `2026-09-05T18:40:10-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `21df4d74b02b5ba298bb55d759b1b449499a011bfe7ce8848a60dd947fcb793a`
+  - SHA-256 (ZIP): `254224d75e4b64a066a704d29dc828e8179b9b4fc861e2ebd446710f18e3d056`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -74,7 +74,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. pytest ejecuta 199 passed, 8 skipped y 29 subtests passed; la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
+1. pytest ejecuta 237 passed y 29 subtests passed (229 passed, 8 skipped en ejecución sin display); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
