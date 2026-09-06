@@ -69,6 +69,9 @@ class ThermalSensorProvider(ABC):
         """Obtiene lecturas instantáneas seguras sin bloquear ni generar falsas alertas."""
         ...
 
+    def reset_session(self) -> None:
+        """Reinicia el estado de sesión si el proveedor almacena capturas temporales."""
+
 
 class NullThermalProvider(ThermalSensorProvider):
     """Proveedor nulo canónico: declara explícitamente telemetría no soportada."""
@@ -685,6 +688,14 @@ class CompositeThermalProvider(ThermalSensorProvider):
                 )
         return all_readings
 
+    def reset_session(self) -> None:
+        """Propaga el reinicio de sesión a todos los proveedores hijos."""
+        for provider in self.providers:
+            if hasattr(provider, "reset_session") and callable(provider.reset_session):
+                provider.reset_session()
+            elif hasattr(provider, "reset") and callable(provider.reset):
+                provider.reset()
+
 
 class ThermalSnapshotProvider(ThermalSensorProvider):
     """Proveedor con captura inmutable en memoria por escaneo.
@@ -724,5 +735,14 @@ class ThermalSnapshotProvider(ThermalSensorProvider):
         return self._snapshot
 
     def reset(self) -> None:
+        """Limpia la captura en memoria para forzar una lectura fresca."""
         with self._lock:
             self._snapshot = None
+
+    def reset_session(self) -> None:
+        """Reinicia la captura inmutable para una nueva sesión de escaneo."""
+        self.reset()
+        if hasattr(self._provider, "reset_session") and callable(self._provider.reset_session):
+            self._provider.reset_session()
+        elif hasattr(self._provider, "reset") and callable(self._provider.reset):
+            self._provider.reset()

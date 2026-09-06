@@ -3,7 +3,7 @@
 import logging
 import time
 import uuid
-from collections.abc import Callable, Container
+from collections.abc import Callable, Container, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -31,6 +31,50 @@ class ScanService:
     collectors: tuple[HardwareCollector, ...]
     diagnostic_engine: RuleBasedDiagnosticEngine
 
+    @staticmethod
+    def _prepare_session(collectors: Sequence[HardwareCollector]) -> None:
+        """Prepara e inicializa de forma determinista una nueva sesión de escaneo.
+
+        Limpia las instancias compartidas de SafePowerShellRunner y reinicia
+        los proveedores con captura por escaneo (ThermalSnapshotProvider)
+        asociados a los recolectores seleccionados, garantizando que los resultados
+        obsoletos no persistan entre llamadas consecutivas a scan().
+        """
+        seen_runners: set[int] = set()
+        seen_thermal_providers: set[int] = set()
+
+        for collector in collectors:
+            # 1. Limpieza de SafePowerShellRunner compartido (exactamente una vez por instancia)
+            runner = getattr(collector, "runner", None)
+            if runner is not None and id(runner) not in seen_runners:
+                seen_runners.add(id(runner))
+                try:
+                    if hasattr(runner, "reset_session") and callable(runner.reset_session):
+                        runner.reset_session()
+                    elif hasattr(runner, "clear_cache") and callable(runner.clear_cache):
+                        runner.clear_cache()
+                except (OSError, RuntimeError, ValueError, AttributeError, TypeError) as exc:  # pragma: no cover
+                    LOGGER.warning("Error al reiniciar SafePowerShellRunner: %s", exc)
+
+            # 2. Reinicio de ThermalSnapshotProvider compartido (exactamente una vez por instancia)
+            thermal_provider = getattr(collector, "thermal_provider", None)
+            if thermal_provider is not None and id(thermal_provider) not in seen_thermal_providers:
+                seen_thermal_providers.add(id(thermal_provider))
+                try:
+                    if hasattr(thermal_provider, "reset_session") and callable(thermal_provider.reset_session):
+                        thermal_provider.reset_session()
+                    elif hasattr(thermal_provider, "reset") and callable(thermal_provider.reset):
+                        thermal_provider.reset()
+                except (OSError, RuntimeError, ValueError, AttributeError, TypeError) as exc:  # pragma: no cover
+                    LOGGER.warning("Error al reiniciar proveedor térmico: %s", exc)
+
+            # 3. Recolectores personalizados que implementen reset_session
+            if hasattr(collector, "reset_session") and callable(collector.reset_session):
+                try:
+                    collector.reset_session()
+                except (OSError, RuntimeError, ValueError, AttributeError, TypeError) as exc:  # pragma: no cover
+                    LOGGER.warning("Error al reiniciar recolector %s: %s", collector, exc)
+
     def scan(
         self,
         on_progress: ProgressCallback | None = None,
@@ -51,6 +95,7 @@ class ScanService:
             for collector in self.collectors
             if only is None or collector.component in only
         )
+        self._prepare_session(selected)
         total = len(selected)
         if total == 0:
             return self.diagnostic_engine.build_report(

@@ -257,6 +257,10 @@ class SafePowerShellRunner:
         with self._lock:
             self._cache.clear()
 
+    def reset_session(self) -> None:
+        """Limpia la caché de consultas para una nueva sesión de escaneo."""
+        self.clear_cache()
+
     def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
         if use_cache:
             with self._lock:

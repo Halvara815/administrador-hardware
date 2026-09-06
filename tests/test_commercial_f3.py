@@ -555,6 +555,189 @@ class ThermalSnapshotAndDeduplicationTests(TestCase):
         self.assertTrue(any(isinstance(c, CpuCollector) for c in collectors))
         self.assertTrue(any(isinstance(c, MonitorGpuCollector) for c in collectors))
 
+    def test_two_consecutive_scans_reexecute_and_return_fresh_values(self) -> None:
+        """Dos ScanService.scan() consecutivos ejecutan las fuentes 1 vez por scan (2 en total) y usan valores actuales."""
+        wmi_counter = {"calls": 0}
+        nvidia_counter = {"calls": 0}
+        storage_rel_counter = {"calls": 0}
+
+        def mock_ps_run(query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+            if query == PowerShellQuery.THERMAL_ZONE:
+                wmi_counter["calls"] += 1
+                # Primer scan: 3132 dK (40.0 °C); Segundo scan: 3282 dK (55.0 °C)
+                temp_dk = 3132 if wmi_counter["calls"] == 1 else 3282
+                return mock_cmd_result(
+                    f'[{{"InstanceName":"TZ01","CurrentTemperature":{temp_dk}}}]',
+                    PowerShellQuery.THERMAL_ZONE,
+                )
+            if query == PowerShellQuery.STORAGE_RELIABILITY:
+                storage_rel_counter["calls"] += 1
+                temp_c = 35 if storage_rel_counter["calls"] == 1 else 50
+                return mock_cmd_result(
+                    f'[{{"FriendlyName":"SSD 1","Temperature":{temp_c},"DeviceId":0}}]',
+                    PowerShellQuery.STORAGE_RELIABILITY,
+                )
+            if query == PowerShellQuery.VIDEO_CONTROLLERS:
+                return mock_cmd_result(
+                    '[{"Tipo":"GPU","Nombre":"NVIDIA GPU","Estado":"OK"}]',
+                    PowerShellQuery.VIDEO_CONTROLLERS,
+                )
+            if query == PowerShellQuery.PHYSICAL_DISKS:
+                return mock_cmd_result(
+                    '[{"DeviceId":0,"FriendlyName":"SSD 1","MediaType":"SSD","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                    PowerShellQuery.PHYSICAL_DISKS,
+                )
+            if query == PowerShellQuery.DISKS:
+                return mock_cmd_result(
+                    '[{"Number":0,"FriendlyName":"SSD 1","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                    PowerShellQuery.DISKS,
+                )
+            if query == PowerShellQuery.VOLUMES:
+                return mock_cmd_result(
+                    '[{"DriveLetter":"C","FileSystem":"NTFS","Size":500000000000,"SizeRemaining":300000000000,"HealthStatus":"Healthy"}]',
+                    PowerShellQuery.VOLUMES,
+                )
+            return mock_cmd_result('[]', query)
+
+        class MockSafePowerShellRunner(SafePowerShellRunner):
+            def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+                if use_cache and query in self._cache:
+                    return self._cache[query]
+                res = mock_ps_run(query, use_cache)
+                if use_cache:
+                    self._cache[query] = res
+                return res
+
+        class MockSafeCommandRunner(SafeCommandRunner):
+            def nvidia_smi_query(self, binary_path: str, timeout: float = 5.0) -> NativeCommandResult:
+                nvidia_counter["calls"] += 1
+                temp_gpu = 42 if nvidia_counter["calls"] == 1 else 68
+                return NativeCommandResult(
+                    command=("nvidia-smi",),
+                    output=f"0, NVIDIA GPU, {temp_gpu}, 10, 30, 50.0, 1000, Not Active, Not Active\n",
+                    exit_code=0,
+                )
+
+        runner = MockSafePowerShellRunner()
+        cmd_runner = MockSafeCommandRunner()
+
+        wmi_provider = WmiThermalZoneProvider(runner)
+        gpu_provider = NvidiaGpuThermalProvider(
+            runner=cmd_runner,
+            custom_binary_path=r"C:\Windows\System32\nvidia-smi.exe",
+        )
+        storage_provider = StorageThermalProvider(runner=runner)
+
+        composite = CompositeThermalProvider((wmi_provider, gpu_provider, storage_provider))
+        snapshot_provider = ThermalSnapshotProvider(composite)
+
+        collectors = (
+            SystemCollector(runner, thermal_provider=snapshot_provider),
+            CpuCollector(runner, thermal_provider=snapshot_provider),
+            StorageCollector(runner, thermal_provider=snapshot_provider),
+            MonitorGpuCollector(runner, thermal_provider=snapshot_provider),
+        )
+
+        def mock_scan_cpu(interval: float | None = None, percpu: bool = False) -> Any:
+            return [10.0] if percpu else 10.0
+
+        with patch("psutil.cpu_percent", side_effect=mock_scan_cpu), \
+             patch("psutil.cpu_count", return_value=8), \
+             patch("psutil.cpu_freq", return_value=None), \
+             patch("psutil.disk_partitions", return_value=[]), \
+             patch("psutil.disk_usage", side_effect=OSError):
+            service = ScanService(collectors=collectors, diagnostic_engine=RuleBasedDiagnosticEngine())
+
+            # PRIMER ESCANEO
+            report1 = service.scan()
+
+            self.assertEqual(wmi_counter["calls"], 1)
+            self.assertEqual(nvidia_counter["calls"], 1)
+            self.assertEqual(storage_rel_counter["calls"], 1)
+
+            sys1 = next(r for r in report1.results if r.component == ComponentKind.SYSTEM)
+            sensors1 = {s["Origen"]: s["Temperatura"] for s in sys1.facts["Sensores térmicos del equipo"]}
+            self.assertEqual(sensors1["TZ01"], "40.0 °C")
+            self.assertEqual(sensors1["GPU 0: NVIDIA GPU"], "42.0 °C")
+            self.assertEqual(sensors1["Almacenamiento: SSD 1"], "35.0 °C")
+
+            disk1 = next(r for r in report1.results if r.component == ComponentKind.DISK)
+            self.assertEqual(disk1.facts["Telemetría térmica de almacenamiento"][0]["Temperatura"], "35.0 °C")
+
+            gpu1 = next(r for r in report1.results if r.component == ComponentKind.MONITOR_GPU)
+            self.assertEqual(gpu1.facts["Telemetría térmica GPU"][0]["Temperatura"], "42.0 °C")
+
+            # SEGUNDO ESCANEO CONSECUTIVO
+            report2 = service.scan()
+
+            # Cada fuente se ejecutó exactamente 1 vez adicional (2 en total)
+            self.assertEqual(wmi_counter["calls"], 2)
+            self.assertEqual(nvidia_counter["calls"], 2)
+            self.assertEqual(storage_rel_counter["calls"], 2)
+
+            sys2 = next(r for r in report2.results if r.component == ComponentKind.SYSTEM)
+            sensors2 = {s["Origen"]: s["Temperatura"] for s in sys2.facts["Sensores térmicos del equipo"]}
+            self.assertEqual(sensors2["TZ01"], "55.0 °C")
+            self.assertEqual(sensors2["GPU 0: NVIDIA GPU"], "68.0 °C")
+            self.assertEqual(sensors2["Almacenamiento: SSD 1"], "50.0 °C")
+
+            disk2 = next(r for r in report2.results if r.component == ComponentKind.DISK)
+            self.assertEqual(disk2.facts["Telemetría térmica de almacenamiento"][0]["Temperatura"], "50.0 °C")
+
+            gpu2 = next(r for r in report2.results if r.component == ComponentKind.MONITOR_GPU)
+            self.assertEqual(gpu2.facts["Telemetría térmica GPU"][0]["Temperatura"], "68.0 °C")
+
+    def test_safe_powershell_runner_session_cache_and_reset(self) -> None:
+        """SafePowerShellRunner cachea dentro de una sesión y se limpia con reset_session()."""
+        call_count = {"calls": 0}
+
+        def mock_subp_run(*args: Any, **kwargs: Any) -> Any:
+            call_count["calls"] += 1
+            mock_res = MagicMock()
+            mock_res.returncode = 0
+            mock_res.stdout = '[{"Name":"Test"}]'
+            mock_res.stderr = ""
+            return mock_res
+
+        runner = SafePowerShellRunner()
+        with patch("subprocess.run", side_effect=mock_subp_run):
+            # Primera llamada en sesión 1: ejecuta subprocess
+            res1 = runner.run(PowerShellQuery.STORAGE_RELIABILITY)
+            self.assertEqual(call_count["calls"], 1)
+            self.assertEqual(res1.output, '[{"Name":"Test"}]')
+
+            # Segunda llamada en sesión 1: resultado en caché, no ejecuta subprocess
+            res2 = runner.run(PowerShellQuery.STORAGE_RELIABILITY)
+            self.assertEqual(call_count["calls"], 1)
+            self.assertIs(res1, res2)
+
+            # Inicia nueva sesión
+            runner.reset_session()
+
+            # Tercera llamada en sesión 2: caché limpia, ejecuta subprocess nuevamente
+            res3 = runner.run(PowerShellQuery.STORAGE_RELIABILITY)
+            self.assertEqual(call_count["calls"], 2)
+            self.assertEqual(res3.output, '[{"Name":"Test"}]')
+
+    def test_scan_service_partial_scan_prepares_session(self) -> None:
+        """ScanService.scan() con 'only' reinicia los recolectores seleccionados."""
+        runner = SafePowerShellRunner()
+        mock_provider = MagicMock()
+        mock_provider.read_temperatures.return_value = []
+        cpu_collector = CpuCollector(runner, thermal_provider=mock_provider)
+
+        engine = RuleBasedDiagnosticEngine()
+        service = ScanService(collectors=(cpu_collector,), diagnostic_engine=engine)
+
+        with patch("psutil.cpu_percent", return_value=5.0), \
+             patch("psutil.cpu_count", return_value=4), \
+             patch("psutil.cpu_freq", return_value=None), \
+             patch.object(runner, "run", return_value=mock_cmd_result('[]', PowerShellQuery.CPU_INFO)):
+            report = service.scan(only=[ComponentKind.CPU])
+
+        self.assertEqual(len(report.results), 1)
+        self.assertEqual(report.results[0].component, ComponentKind.CPU)
+
 
 class ThermalVerticalSliceIntegrationTests(TestCase):
     """Integración vertical: Recolector -> Motor -> Recomendaciones -> Reportes."""
