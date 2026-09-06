@@ -16,10 +16,10 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `f43bbc2da11d9ab85496bd2582de99caedba92155906a57084332d81f8bd9913`
-  - Fecha de compilación (EXE): `2026-09-05T18:52:11-06:00`
+  - SHA-256 (EXE): `1de1f3e7ad2c014ad034c55b9c5eb0fb264533cf5bbd98d9da6c398d158a5cf3`
+  - Fecha de compilación (EXE): `2026-09-05T19:11:06-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `b41f8ebf68fbc408003c50f0237e842771dcb3212b07a682ab9ac247e9a4e6d2`
+  - SHA-256 (ZIP): `8a0f7e57123381e718d2d0416286597f3078c63ec7a1bada7dbf27c6a7eed482`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
