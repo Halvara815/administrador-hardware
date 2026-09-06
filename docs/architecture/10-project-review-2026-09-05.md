@@ -16,12 +16,28 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 37 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `523ee0dee5a77a30e131526a5247632797aa8dedc1ccf12ae2178a3af08ab011`
-  - Fecha de compilación (EXE): `2026-09-05T20:57:15-06:00`
+  - SHA-256 (EXE): `2cdbdeb5e09a10f863caf414306b6f1556e641836e709b2b1ce7df46c64bafbb`
+  - Fecha de compilación (EXE): `2026-09-05T22:08:08-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `57db1f6d189b54f0633a89f91f16c01294c69d6722ea8447e074fd41d3400730`
-  - Intérprete de empaquetado: CPython 3.12.14 Windows x86_64 con Tcl/Tk 8.6.12 completo (`tcl86t.dll`, `tk86t.dll`, `_tkinter.pyd`).
-  - Nota de auditoría: Los builds previos generados bajo Python 3.14 quedan **INVALIDADOS** debido a que carecían de binarios Tcl/Tk funcionales (`ModuleNotFoundError: No module named 'tkinter'`). El nuevo build ha sido validado mediante doble `--smoke-test` obligatorio (apertura y cierre de ventana principal, ventana hija de sensores térmicos y ventana hija de eventos de Windows) tanto en el EXE de `dist` como en el EXE extraído del ZIP.
+  - SHA-256 (ZIP): `50ef078bca72964249cd02ce4a2119655cc3ffb68597c0e83828699e9de90172`
+  - Intérprete de empaquetado: CPython 3.12.10 Windows x86_64 con Tcl/Tk 8.6.15 completo (`tcl86t.dll`, `tk86t.dll`, `_tkinter.pyd`), verificado con `tkinter.Tk()` antes de compilar.
+  - Nota de auditoría: los builds previos bajo Python 3.14 quedan **INVALIDADOS**
+    por carecer de binarios Tcl/Tk funcionales, y los hashes que este documento
+    registraba antes de esta revisión (`523ee0de…` para el EXE y `57db1f6d…`
+    para el ZIP) quedan **igualmente invalidados**: no correspondían a ningún
+    artefacto verificado.
+  - Causa raíz del bloqueo de empaquetado: el spec aplanaba los destinos de los
+    recursos Tcl/Tk con `Path(dest).parent`. `tcltk_info.data_files` entrega 926
+    entradas con rutas anidadas (`_tcl_data/init.tcl`,
+    `_tcl_data/encoding/cp1252.enc`, `_tk_data/ttk/ttk.tcl`), y el aplanado las
+    colapsaba todas al directorio raíz, destruyendo los subdirectorios que Tcl
+    necesita. Ahora las tuplas canónicas `(dest, src, typecode)` se añaden a
+    `a.datas` sin alterar el destino.
+  - Validación del nuevo build: doble `--smoke-test` con código de salida 0
+    —apertura y cierre de la ventana principal, de la ventana de sensores
+    térmicos y de la de eventos de Windows— tanto en el EXE de `dist` como en el
+    EXE extraído del ZIP en un directorio temporal. Se comprobó además la
+    presencia de los recursos anidados que el aplanado destruía.
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.

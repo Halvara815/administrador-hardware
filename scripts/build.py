@@ -45,32 +45,34 @@ def main() -> None:
     run([python, "-m", "pip", "install", "--no-deps", "-e", "."])
     run([python, "scripts/prepare_icon.py"])
 
-    # 1. Normalizar y verificar explícitamente el entorno Tcl/Tk antes de ejecutar pruebas
-    run(
-        [
-            python,
-            "-c",
-            (
-                "import shutil, sys, pathlib, tkinter; "
-                "bp = pathlib.Path(sys.base_prefix) / 'tcl'; "
-                "vp = pathlib.Path(sys.prefix) / 'tcl'; "
-                "shutil.copytree(bp, vp, dirs_exist_ok=True) if bp.exists() and not vp.exists() else None; "
-                "root = tkinter.Tk(); root.destroy(); "
-                "print('Verificación explícita de Tcl/Tk: PASS')"
-            ),
-        ]
+    # 1. Verificar explícitamente la disponibilidad nativa de Tcl/Tk sin copiar recursos como workaround
+    check_tk_code = (
+        "import sys, tkinter\n"
+        "try:\n"
+        "    root = tkinter.Tk()\n"
+        "    root.destroy()\n"
+        "    print('Verificación nativa de Tcl/Tk en el entorno: PASS')\n"
+        "except Exception as err:\n"
+        "    print(f'ERROR CRÍTICO: Tcl/Tk no funciona en el entorno {sys.executable}: {err}', file=sys.stderr)\n"
+        "    sys.exit(1)\n"
     )
+    run([python, "-c", check_tk_code])
 
     run([python, "-m", "pytest", "--capture=sys", "-q"])
     run([str(VENV_DIR / "Scripts" / "ruff.exe"), "check", "."])
     # Sin argumentos usa los paquetes del pyproject, que es la puerta real.
     run([str(VENV_DIR / "Scripts" / "mypy.exe")])
 
-    # Terminar cualquier proceso residual si estuviera activo para evitar bloqueos de DLL
-    subprocess.run(
-        ["powershell", "-Command", "Stop-Process -Name AdministradorDeHardware -Force -ErrorAction SilentlyContinue"],
-        check=False,
+    # Verificar que ningún proceso residual de AdministradorDeHardware esté bloqueando archivos
+    check_process_code = (
+        "import psutil, sys\n"
+        "blocking = [p.info for p in psutil.process_iter(['name', 'pid']) if p.info['name'] and 'AdministradorDeHardware' in p.info['name']]\n"
+        "if blocking:\n"
+        "    pids = ', '.join(str(b['pid']) for b in blocking)\n"
+        "    print(f'ERROR: El proceso AdministradorDeHardware está en ejecución (PID: {pids}). Por favor ciérrelo manualmente antes de continuar el build.', file=sys.stderr)\n"
+        "    sys.exit(1)\n"
     )
+    run([python, "-c", check_process_code])
 
     run(
         [
@@ -86,6 +88,16 @@ def main() -> None:
     if not executable.exists():
         raise FileNotFoundError(f"PyInstaller no creó {executable}")
     distribution = executable.parent
+
+    # Verificar que el paquete compilado contenga init.tcl y tk.tcl en _internal
+    tcl_init = distribution / "_internal" / "_tcl_data" / "init.tcl"
+    tk_init = distribution / "_internal" / "_tk_data" / "tk.tcl"
+    if not tcl_init.exists():
+        raise FileNotFoundError(f"Falta archivo crítico Tcl en la distribución: {tcl_init}")
+    if not tk_init.exists():
+        raise FileNotFoundError(f"Falta archivo crítico Tk en la distribución: {tk_init}")
+    print("> Verificación de recursos Tcl/Tk en paquete dist: init.tcl y tk.tcl presentes.")
+
     for source_name, target_name in DISTRIBUTION_DOCS:
         source = PROJECT_ROOT / source_name
         if not source.exists():
@@ -118,9 +130,19 @@ def main() -> None:
     temp_smoke_dir.mkdir(parents=True, exist_ok=True)
     try:
         shutil.unpack_archive(archive_path, temp_smoke_dir)
-        extracted_exe = temp_smoke_dir / distribution.name / executable.name
+        unzipped_dist = temp_smoke_dir / distribution.name
+        extracted_exe = unzipped_dist / executable.name
         if not extracted_exe.exists():
             raise FileNotFoundError(f"El ejecutable no existe dentro del paquete ZIP: {extracted_exe}")
+
+        extracted_tcl_init = unzipped_dist / "_internal" / "_tcl_data" / "init.tcl"
+        extracted_tk_init = unzipped_dist / "_internal" / "_tk_data" / "tk.tcl"
+        if not extracted_tcl_init.exists():
+            raise FileNotFoundError(f"Falta archivo crítico Tcl en el ZIP extraído: {extracted_tcl_init}")
+        if not extracted_tk_init.exists():
+            raise FileNotFoundError(f"Falta archivo crítico Tk en el ZIP extraído: {extracted_tk_init}")
+        print("> Verificación de recursos Tcl/Tk en paquete ZIP extraído: init.tcl y tk.tcl presentes.")
+
         run([str(extracted_exe), "--smoke-test"])
     finally:
         shutil.rmtree(temp_smoke_dir, ignore_errors=True)

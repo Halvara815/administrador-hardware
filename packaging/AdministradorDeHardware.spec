@@ -37,8 +37,6 @@ datas += [
     (str(project_root / "assets" / "app-icon.ico"), "assets"),
     (str(project_root / "assets" / "app-icon.png"), "assets"),
 ]
-# Incluir archivos de datos Tcl/Tk oficiales en formato (origen, directorio_destino)
-datas += [(src, str(Path(dest).parent)) for dest, src, _ in tcltk_info.data_files]
 
 # Binarios: asegurar que DLLs Tcl/Tk y extensión _tkinter.pyd se incluyan explícitamente
 binaries = list(ctk_binaries)
@@ -63,6 +61,13 @@ a = Analysis(
     noarchive=False,
     optimize=1,
 )
+
+# Conservar exactamente la jerarquía de destino requerida por PyInstaller/Tcl
+# sin alterar dest con Path(dest).parent. tcltk_info.data_files contiene tuplas canónicas (dest, src, typecode).
+for dest, src, typecode in tcltk_info.data_files:
+    entry = (dest, src, typecode)
+    if entry not in a.datas:
+        a.datas.append(entry)
 pyz = PYZ(a.pure)
 
 exe = EXE(
