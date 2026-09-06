@@ -19,7 +19,9 @@ from hardware_admin.diagnostics.rules import CPU_RULE, MEMORY_RULE
 from hardware_admin.diagnostics.thermal import (
     CompositeThermalProvider,
     NvidiaGpuThermalProvider,
+    StorageThermalProvider,
     ThermalSensorProvider,
+    ThermalSnapshotProvider,
     WmiThermalZoneProvider,
 )
 from hardware_admin.domain.models import (
@@ -401,7 +403,7 @@ class CpuCollector:
                 Measurement("Frecuencia actual", round(frequency.current / 1000.0, 2), "GHz")
             )
 
-        # Telemetría térmica de CPU / Zonas térmicas ACPI
+        # Telemetría térmica de CPU / Zonas térmicas ACPI (Fase F3)
         if self.thermal_provider is not None:
             try:
                 thermal_readings = self.thermal_provider.read_temperatures()
@@ -424,6 +426,13 @@ class CpuCollector:
                         elif r.status is HealthStatus.WARNING and status is HealthStatus.NORMAL:
                             status = HealthStatus.WARNING
                             problem = (problem + "; " if problem else "") + f"Temperatura elevada en CPU ({r.detail})"
+                else:
+                    facts["Telemetría térmica CPU"] = "No disponible de forma nativa sin controladores propietarios"
+
+                # Las zonas térmicas ACPI son de ámbito del sistema y no son atribuibles de forma confiable a CPU
+                acpi_readings = [r for r in thermal_readings if r.target_hardware == "THERMAL_ZONE"]
+                if acpi_readings:
+                    facts["Zonas térmicas ACPI"] = "Zona térmica ACPI; no atribuible de forma confiable a CPU"
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
                 facts["Telemetría térmica CPU"] = f"Error al consultar telemetría: {exc}"
 
@@ -829,18 +838,20 @@ def build_default_collectors(
     runner = SafePowerShellRunner()
     provider = thermal_provider
     if provider is None:
-        provider = CompositeThermalProvider(
+        composite = CompositeThermalProvider(
             (
                 WmiThermalZoneProvider(runner),
                 NvidiaGpuThermalProvider(),
+                StorageThermalProvider(runner=runner),
             )
         )
+        provider = ThermalSnapshotProvider(composite)
 
     return (
         SystemCollector(runner, thermal_provider=provider),
         CpuCollector(runner, thermal_provider=provider),
         MemoryCollector(runner),
-        DiskCollector(runner),
+        DiskCollector(runner, thermal_provider=provider),
         NetworkCollector(runner),
         PnpCollector(runner, ComponentKind.USB, "USB", PowerShellQuery.USB_PRESENT),
         PnpCollector(runner, ComponentKind.PCI, "PCI / PCIe", PowerShellQuery.PCI_PRESENT),

@@ -1,7 +1,7 @@
 # ADR-003: Evaluación y Selección de Proveedores de Sensores Térmicos (Fase F3)
 
 **Fecha**: 2026-09-05  
-**Estado**: F3 EN IMPLEMENTACIÓN  
+**Estado**: IMPLEMENTADA CON VERIFICACIÓN FÍSICA PENDIENTE (NEEDS_USER_VERIFICATION)  
 **Contexto**: Hoja de Ruta Comercial - Fase F3 (`docs/COMMERCIAL_ROADMAP.md`).
 
 ---
@@ -86,7 +86,7 @@ from hardware_admin.domain.models import ConfidenceLevel, HealthStatus, Measurem
 @dataclass(frozen=True, slots=True)
 class ThermalReading:
     source_name: str
-    target_hardware: str          # CPU, GPU, STORAGE, CHIPSET
+    target_hardware: str          # THERMAL_ZONE, CPU, GPU, STORAGE, CHIPSET
     temperature_celsius: float | None
     unit: str
     collected_at: datetime
@@ -96,6 +96,7 @@ class ThermalReading:
     is_supported: bool
     detail: str
     is_throttling: bool | None = None
+    fan_percent: int | None = None
     fan_rpm: int | None = None
     power_watts: float | None = None
     clock_mhz: float | None = None

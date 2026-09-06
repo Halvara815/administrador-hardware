@@ -38,8 +38,13 @@ class StorageCollector:
 
     component = ComponentKind.DISK
 
-    def __init__(self, runner: SafePowerShellRunner) -> None:
+    def __init__(
+        self,
+        runner: SafePowerShellRunner,
+        thermal_provider: Any | None = None,
+    ) -> None:
         self.runner = runner
+        self.thermal_provider = thermal_provider
 
     def collect(self) -> ComponentResult:
         volumes: list[dict[str, Any]] = []
@@ -268,6 +273,30 @@ class StorageCollector:
             ]
         if usb_case:
             facts["Caso"] = usb_case
+
+        # Telemetría térmica de almacenamiento (Fase F3)
+        if self.thermal_provider is not None:
+            try:
+                thermal_readings = self.thermal_provider.read_temperatures()
+                storage_readings = [r for r in thermal_readings if r.target_hardware == "STORAGE"]
+                if storage_readings:
+                    facts["Telemetría térmica de almacenamiento"] = [
+                        {
+                            "Unidad": r.source_name,
+                            "Temperatura": f"{r.temperature_celsius} °C" if r.temperature_celsius is not None else "No disponible",
+                            "Estado": r.status.value,
+                            "Fuente": r.source_name,
+                            "Confianza": r.confidence.value,
+                            "Detalle": r.detail,
+                            "Soportado": "Sí" if r.is_supported else "No",
+                        }
+                        for r in storage_readings
+                    ]
+                    for r in storage_readings:
+                        measurements.extend(r.measurements)
+            except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+                facts["Telemetría térmica de almacenamiento"] = f"Error al consultar telemetría: {exc}"
+
         # Serie para el grafico de barras apiladas por unidad.
         facts["_volumenes"] = [
             {

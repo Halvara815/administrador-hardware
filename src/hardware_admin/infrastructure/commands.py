@@ -162,6 +162,13 @@ class SafeCommandRunner:
 
     def nvidia_smi_query(self, binary_path: str, timeout: float = 5.0) -> NativeCommandResult:
         """Ejecuta consulta cerrada a un binario nvidia-smi verificado en ruta de confianza."""
+        if not is_trusted_nvidia_smi_path(binary_path):
+            return NativeCommandResult(
+                command=(str(binary_path),),
+                output="",
+                exit_code=-1,
+                error=f"Ruta de nvidia-smi no confiable o no permitida: {binary_path!r}",
+            )
         fixed_args = [
             binary_path,
             "--query-gpu=index,name,temperature.gpu,utilization.gpu,fan.speed,power.draw,clocks.current.graphics,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown",
@@ -174,6 +181,18 @@ _TRUSTED_NVIDIA_SMI_CANDIDATES: tuple[Path, ...] = (
     Path(r"C:\Windows\System32\nvidia-smi.exe"),
     Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
 )
+
+
+def is_trusted_nvidia_smi_path(binary_path: str | Path) -> bool:
+    """Valida estrictamente que una ruta apunte a una ubicación confiable de nvidia-smi."""
+    if not binary_path:
+        return False
+    try:
+        resolved = Path(binary_path).resolve()
+        trusted_set = {str(c.resolve()).lower() for c in _TRUSTED_NVIDIA_SMI_CANDIDATES}
+        return str(resolved).lower() in trusted_set
+    except (OSError, ValueError):
+        return False
 
 
 def find_trusted_nvidia_smi() -> str | None:

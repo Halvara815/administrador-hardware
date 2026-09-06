@@ -149,7 +149,7 @@ class GpuCollector:
                             "Dispositivo": r.source_name,
                             "Temperatura": f"{r.temperature_celsius} °C" if r.temperature_celsius is not None else "No disponible",
                             "Throttling térmico": "Activo" if r.is_throttling is True else ("Inactivo" if r.is_throttling is False else "No determinado"),
-                            "Ventilador": f"{r.fan_rpm}%" if r.fan_rpm is not None else "No disponible",
+                            "Ventilador": f"{r.fan_percent}%" if r.fan_percent is not None else (f"{r.fan_rpm} RPM" if r.fan_rpm is not None else "No disponible"),
                             "Potencia": f"{r.power_watts} W" if r.power_watts is not None else "No disponible",
                             "Frecuencia": f"{r.clock_mhz} MHz" if r.clock_mhz is not None else "No disponible",
                             "Estado": r.status.value,

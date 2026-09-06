@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -21,6 +22,7 @@ from hardware_admin.infrastructure.commands import (
     find_trusted_nvidia_smi,
 )
 from hardware_admin.infrastructure.powershell import (
+    MalformedQueryOutput,
     PowerShellQuery,
     SafePowerShellRunner,
     parse_json_rows,
@@ -110,7 +112,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
             return [
                 ThermalReading(
                     source_name="ACPI Thermal Zone",
-                    target_hardware="CPU",
+                    target_hardware="THERMAL_ZONE",
                     temperature_celsius=None,
                     unit="°C",
                     collected_at=_now(),
@@ -118,7 +120,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.ERROR,
                     is_supported=True,
-                    detail="Tiempo agotado al consultar WMI MSAcpi_ThermalZoneTemperature",
+                    detail="Tiempo agotado al consultar WMI MSAcpi_ThermalZoneTemperature (Zona térmica ACPI; no atribuible de forma confiable a CPU)",
                 )
             ]
 
@@ -128,7 +130,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                 return [
                     ThermalReading(
                         source_name="ACPI Thermal Zone",
-                        target_hardware="CPU",
+                        target_hardware="THERMAL_ZONE",
                         temperature_celsius=None,
                         unit="°C",
                         collected_at=_now(),
@@ -136,13 +138,13 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                         confidence=ConfidenceLevel.LOW,
                         status=HealthStatus.ERROR,
                         is_supported=True,
-                        detail="Permiso denegado al consultar WMI (requiere elevación)",
+                        detail="Permiso denegado al consultar WMI (requiere elevación) - Zona térmica ACPI; no atribuible de forma confiable a CPU",
                     )
                 ]
             return [
                 ThermalReading(
                     source_name="ACPI Thermal Zone",
-                    target_hardware="CPU",
+                    target_hardware="THERMAL_ZONE",
                     temperature_celsius=None,
                     unit="°C",
                     collected_at=_now(),
@@ -150,7 +152,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.ERROR,
                     is_supported=True,
-                    detail=f"Fallo en consulta WMI: {result.error or 'Error desconocido'}",
+                    detail=f"Fallo en consulta WMI: {result.error or 'Error desconocido'} - Zona térmica ACPI; no atribuible de forma confiable a CPU",
                 )
             ]
 
@@ -159,7 +161,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
             return [
                 ThermalReading(
                     source_name="ACPI Thermal Zone",
-                    target_hardware="CPU",
+                    target_hardware="THERMAL_ZONE",
                     temperature_celsius=None,
                     unit="°C",
                     collected_at=_now(),
@@ -167,7 +169,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.NOT_SUPPORTED,
                     is_supported=False,
-                    detail="No hay zonas térmicas ACPI expuestas por la placa base o el BIOS",
+                    detail="No hay zonas térmicas ACPI expuestas por la placa base o el BIOS (Zona térmica ACPI; no atribuible de forma confiable a CPU)",
                 )
             ]
 
@@ -181,7 +183,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                 readings.append(
                     ThermalReading(
                         source_name=name,
-                        target_hardware="CPU",
+                        target_hardware="THERMAL_ZONE",
                         temperature_celsius=None,
                         unit="°C",
                         collected_at=_now(),
@@ -189,7 +191,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                         confidence=ConfidenceLevel.LOW,
                         status=HealthStatus.NOT_SUPPORTED,
                         is_supported=False,
-                        detail=f"Valor de temperatura no interpretable: {raw_temp!r}",
+                        detail=f"Valor de temperatura no interpretable: {raw_temp!r} - Zona térmica ACPI; no atribuible de forma confiable a CPU",
                     )
                 )
                 continue
@@ -205,7 +207,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
             readings.append(
                 ThermalReading(
                     source_name=name,
-                    target_hardware="CPU",
+                    target_hardware="THERMAL_ZONE",
                     temperature_celsius=celsius,
                     unit="°C",
                     collected_at=_now(),
@@ -213,7 +215,7 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
                     confidence=ConfidenceLevel.HIGH,
                     status=status,
                     is_supported=True,
-                    detail=f"Temperatura leída de zona térmica ACPI: {celsius} °C",
+                    detail=f"Zona térmica ACPI; no atribuible de forma confiable a CPU ({celsius} °C)",
                     measurements=meas,
                 )
             )
@@ -222,17 +224,94 @@ class WmiThermalZoneProvider(ThermalSensorProvider):
 
 
 class StorageThermalProvider(ThermalSensorProvider):
-    """Reutiliza contadores SMART / Reliability ya obtenidos en F2."""
+    """Reutiliza contadores SMART / Reliability ya obtenidos en F2 sin duplicar consultas."""
 
-    def __init__(self, raw_reliability_rows: Sequence[dict[str, Any]] | None = None) -> None:
-        self.rows = tuple(raw_reliability_rows or ())
+    def __init__(
+        self,
+        runner_or_rows: SafePowerShellRunner | Sequence[dict[str, Any]] | None = None,
+        *,
+        runner: SafePowerShellRunner | None = None,
+        raw_reliability_rows: Sequence[dict[str, Any]] | None = None,
+    ) -> None:
+        self.runner: SafePowerShellRunner | None = None
+        self._raw_rows: tuple[dict[str, Any], ...] | None = None
+        if isinstance(runner_or_rows, SafePowerShellRunner):
+            self.runner = runner_or_rows
+            self._raw_rows = tuple(raw_reliability_rows) if raw_reliability_rows is not None else None
+        elif isinstance(runner_or_rows, (list, tuple)):
+            self.runner = runner
+            self._raw_rows = tuple(runner_or_rows)
+        else:
+            self.runner = runner
+            self._raw_rows = tuple(raw_reliability_rows) if raw_reliability_rows is not None else None
 
     def is_available(self) -> bool:
-        return bool(self.rows)
+        return True
 
     def read_temperatures(self) -> Sequence[ThermalReading]:
+        start = datetime.now(UTC)
+        rows: list[dict[str, Any]] = []
+        elapsed: float = 0.0
+
+        if self._raw_rows is not None:
+            rows = list(self._raw_rows)
+        elif self.runner is not None:
+            res = self.runner.run(PowerShellQuery.STORAGE_RELIABILITY)
+            elapsed = (datetime.now(UTC) - start).total_seconds()
+            if res.timed_out:
+                return [
+                    ThermalReading(
+                        source_name="Almacenamiento SMART",
+                        target_hardware="STORAGE",
+                        temperature_celsius=None,
+                        unit="°C",
+                        collected_at=_now(),
+                        duration_seconds=elapsed,
+                        confidence=ConfidenceLevel.LOW,
+                        status=HealthStatus.ERROR,
+                        is_supported=True,
+                        detail="Tiempo agotado al consultar fiabilidad SMART de almacenamiento",
+                    )
+                ]
+            if res.exit_code != 0 and not res.output:
+                err_l = (res.error or "").lower()
+                detail = "Fallo al consultar fiabilidad SMART de almacenamiento"
+                if any(t in err_l for t in ("access", "permission", "acceso", "privilegio", "denied")):
+                    detail = "No disponible por permisos (requiere elevación de administrador)"
+                return [
+                    ThermalReading(
+                        source_name="Almacenamiento SMART",
+                        target_hardware="STORAGE",
+                        temperature_celsius=None,
+                        unit="°C",
+                        collected_at=_now(),
+                        duration_seconds=elapsed,
+                        confidence=ConfidenceLevel.LOW,
+                        status=HealthStatus.NOT_SUPPORTED if "not supported" in err_l else HealthStatus.ERROR,
+                        is_supported=False,
+                        detail=detail,
+                    )
+                ]
+            try:
+                rows = parse_json_rows(res)
+            except (MalformedQueryOutput, ValueError, TypeError, KeyError, OSError) as exc:
+                return [
+                    ThermalReading(
+                        source_name="Almacenamiento SMART",
+                        target_hardware="STORAGE",
+                        temperature_celsius=None,
+                        unit="°C",
+                        collected_at=_now(),
+                        duration_seconds=elapsed,
+                        confidence=ConfidenceLevel.LOW,
+                        status=HealthStatus.ERROR,
+                        is_supported=True,
+                        detail=f"Error al interpretar telemetría de almacenamiento: {exc}",
+                    )
+                ]
+
         readings: list[ThermalReading] = []
-        if not self.rows:
+        if not rows:
             return [
                 ThermalReading(
                     source_name="Almacenamiento SMART",
@@ -240,7 +319,7 @@ class StorageThermalProvider(ThermalSensorProvider):
                     temperature_celsius=None,
                     unit="°C",
                     collected_at=_now(),
-                    duration_seconds=0.0,
+                    duration_seconds=elapsed,
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.NOT_SUPPORTED,
                     is_supported=False,
@@ -248,10 +327,37 @@ class StorageThermalProvider(ThermalSensorProvider):
                 )
             ]
 
-        for item in self.rows:
+        for item in rows:
             name = str(item.get("FriendlyName") or item.get("DeviceId") or "Disco")
             temp = item.get("Temperature")
+            rel_err = item.get("ReliabilityError")
+
             if temp is None:
+                if rel_err:
+                    err_l = str(rel_err).lower()
+                    if any(t in err_l for t in ("access", "permission", "acceso", "privilegio", "denied")):
+                        detail = f"SMART ({name}) no disponible por permisos (requiere elevación)"
+                        st = HealthStatus.ERROR
+                    elif any(t in err_l for t in ("not supported", "no admitido", "no soportado")):
+                        detail = f"SMART ({name}) no soportado por el controlador o unidad"
+                        st = HealthStatus.NOT_SUPPORTED
+                    else:
+                        detail = f"Error SMART ({name}): {rel_err}"
+                        st = HealthStatus.ERROR
+                    readings.append(
+                        ThermalReading(
+                            source_name=f"Almacenamiento: {name}",
+                            target_hardware="STORAGE",
+                            temperature_celsius=None,
+                            unit="°C",
+                            collected_at=_now(),
+                            duration_seconds=elapsed,
+                            confidence=ConfidenceLevel.LOW,
+                            status=st,
+                            is_supported=False,
+                            detail=detail,
+                        )
+                    )
                 continue
 
             try:
@@ -264,7 +370,7 @@ class StorageThermalProvider(ThermalSensorProvider):
                             temperature_celsius=None,
                             unit="°C",
                             collected_at=_now(),
-                            duration_seconds=0.0,
+                            duration_seconds=elapsed,
                             confidence=ConfidenceLevel.LOW,
                             status=HealthStatus.NOT_SUPPORTED,
                             is_supported=False,
@@ -287,7 +393,7 @@ class StorageThermalProvider(ThermalSensorProvider):
                         temperature_celsius=temp_val,
                         unit="°C",
                         collected_at=_now(),
-                        duration_seconds=0.0,
+                        duration_seconds=elapsed,
                         confidence=ConfidenceLevel.HIGH,
                         status=status,
                         is_supported=True,
@@ -306,7 +412,7 @@ class StorageThermalProvider(ThermalSensorProvider):
                     temperature_celsius=None,
                     unit="°C",
                     collected_at=_now(),
-                    duration_seconds=0.0,
+                    duration_seconds=elapsed,
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.NOT_SUPPORTED,
                     is_supported=False,
@@ -392,13 +498,13 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
             reader = csv.reader(io.StringIO(result.output.strip()))
             for row in reader:
                 clean_cols = [col.strip() for col in row]
-                # Esperamos 9 columnas:
+                # Esperamos estrictamente 9 columnas:
                 # index, name, temp, util, fan, power, clock, hw_throttle, sw_throttle
-                if len(clean_cols) < 9:
+                if len(clean_cols) != 9:
                     continue
 
                 idx, name, raw_temp, _raw_util, raw_fan, raw_power, raw_clock, hw_th, sw_th = (
-                    clean_cols[:9]
+                    clean_cols
                 )
 
                 # Parseo de temperatura
@@ -411,11 +517,11 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
                     except (ValueError, TypeError):
                         pass
 
-                # Parseo de ventilador
-                fan_rpm: int | None = None
+                # Parseo de velocidad de ventilador (%)
+                fan_percent: int | None = None
                 if raw_fan not in ("[N/A]", "N/A", "", "null", "None"):
                     try:
-                        fan_rpm = int(float(raw_fan))
+                        fan_percent = int(float(raw_fan))
                     except (ValueError, TypeError):
                         pass
 
@@ -448,9 +554,9 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
                     meas_list.append(
                         Measurement(f"Temperatura GPU ({name})", temp_celsius, "°C", (0.0, 85.0))
                     )
-                if fan_rpm is not None:
+                if fan_percent is not None:
                     meas_list.append(
-                        Measurement(f"Ventilador GPU ({name})", fan_rpm, "%", (0.0, 100.0))
+                        Measurement(f"Ventilador GPU ({name})", fan_percent, "%", (0.0, 100.0))
                     )
                 if power_w is not None:
                     meas_list.append(
@@ -475,7 +581,8 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
                             is_supported=False,
                             detail="nvidia-smi no reportó temperatura válida para este dispositivo",
                             is_throttling=is_throttling,
-                            fan_rpm=fan_rpm,
+                            fan_percent=fan_percent,
+                            fan_rpm=None,
                             power_watts=power_w,
                             clock_mhz=clock_mhz,
                             measurements=tuple(meas_list),
@@ -504,7 +611,8 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
                         is_supported=True,
                         detail=f"Telemetría GPU NVIDIA oficial: {temp_celsius:.0f} °C{throttle_text}",
                         is_throttling=is_throttling,
-                        fan_rpm=fan_rpm,
+                        fan_percent=fan_percent,
+                        fan_rpm=None,
                         power_watts=power_w,
                         clock_mhz=clock_mhz,
                         measurements=tuple(meas_list),
@@ -538,7 +646,7 @@ class NvidiaGpuThermalProvider(ThermalSensorProvider):
                     confidence=ConfidenceLevel.LOW,
                     status=HealthStatus.NOT_SUPPORTED,
                     is_supported=False,
-                    detail="No se encontraron dispositivos GPU en la respuesta de nvidia-smi",
+                    detail="No se encontraron dispositivos GPU válidos en la respuesta de nvidia-smi (o formato de columnas inválido)",
                 )
             ]
 
@@ -576,3 +684,45 @@ class CompositeThermalProvider(ThermalSensorProvider):
                     )
                 )
         return all_readings
+
+
+class ThermalSnapshotProvider(ThermalSensorProvider):
+    """Proveedor con captura inmutable en memoria por escaneo.
+
+    Garantiza que durante una sesión de escaneo, las fuentes de telemetría térmica
+    (WMI ACPI, nvidia-smi, SMART de almacenamiento) se ejecuten a lo sumo una única vez,
+    y que todos los recolectores (Sistema, CPU, GPU, Disco) consuman exactamente
+    la misma captura inmutable en memoria.
+    """
+
+    def __init__(
+        self,
+        provider_or_providers: Any,
+    ) -> None:
+        if isinstance(provider_or_providers, ThermalSensorProvider) or hasattr(
+            provider_or_providers, "read_temperatures"
+        ):
+            self._provider = provider_or_providers
+        else:
+            self._provider = CompositeThermalProvider(provider_or_providers)
+        self._snapshot: tuple[ThermalReading, ...] | None = None
+        self._lock = threading.Lock()
+
+    def is_available(self) -> bool:
+        return bool(self._provider.is_available())
+
+    def read_temperatures(self) -> Sequence[ThermalReading]:
+        if self._snapshot is not None:
+            return self._snapshot
+        with self._lock:
+            if self._snapshot is None:
+                self._snapshot = tuple(self._provider.read_temperatures())
+            return self._snapshot
+
+    @property
+    def snapshot(self) -> tuple[ThermalReading, ...] | None:
+        return self._snapshot
+
+    def reset(self) -> None:
+        with self._lock:
+            self._snapshot = None

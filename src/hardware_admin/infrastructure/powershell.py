@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -248,8 +249,20 @@ class SafePowerShellRunner:
 
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
+        self._cache: dict[PowerShellQuery, CommandResult] = {}
+        self._lock = threading.Lock()
 
-    def run(self, query: PowerShellQuery) -> CommandResult:
+    def clear_cache(self) -> None:
+        """Limpia la caché de resultados de consultas."""
+        with self._lock:
+            self._cache.clear()
+
+    def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+        if use_cache:
+            with self._lock:
+                if query in self._cache:
+                    return self._cache[query]
+
         # Comprobación explícita antes de tocar el intérprete: el catálogo es la
         # única fuente de comandos, y un fallo de búsqueda no debe parecer un
         # accidente del diccionario.
@@ -285,16 +298,28 @@ class SafePowerShellRunner:
             )
         except subprocess.TimeoutExpired as exc:
             partial = exc.stdout.decode("utf-8", "replace") if isinstance(exc.stdout, bytes) else ""
-            return CommandResult(query, partial or "", -1, timed_out=True, error="Tiempo agotado")
+            res = CommandResult(query, partial or "", -1, timed_out=True, error="Tiempo agotado")
+            if use_cache:
+                with self._lock:
+                    self._cache[query] = res
+            return res
         except OSError as exc:
-            return CommandResult(query, "", -1, error=str(exc))
+            res = CommandResult(query, "", -1, error=str(exc))
+            if use_cache:
+                with self._lock:
+                    self._cache[query] = res
+            return res
 
-        return CommandResult(
+        res = CommandResult(
             query=query,
             output=completed.stdout.strip(),
             exit_code=completed.returncode,
             error=completed.stderr.strip(),
         )
+        if use_cache:
+            with self._lock:
+                self._cache[query] = res
+        return res
 
 
 def parse_json_rows(result: CommandResult) -> list[dict[str, Any]]:

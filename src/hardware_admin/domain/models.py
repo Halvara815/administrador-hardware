@@ -73,6 +73,7 @@ class ThermalReading:
     is_supported: bool
     detail: str
     is_throttling: bool | None = None
+    fan_percent: int | None = None
     fan_rpm: int | None = None
     power_watts: float | None = None
     clock_mhz: float | None = None

@@ -7,13 +7,21 @@ from typing import Any
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from hardware_admin.collectors.core import CpuCollector
+from hardware_admin.collectors.core import (
+    CpuCollector,
+    MonitorGpuCollector,
+    SystemCollector,
+    build_default_collectors,
+)
 from hardware_admin.collectors.gpu import GpuCollector
+from hardware_admin.collectors.storage import StorageCollector
 from hardware_admin.diagnostics.engine import RuleBasedDiagnosticEngine
 from hardware_admin.diagnostics.thermal import (
+    CompositeThermalProvider,
     NullThermalProvider,
     NvidiaGpuThermalProvider,
     StorageThermalProvider,
+    ThermalSnapshotProvider,
     WmiThermalZoneProvider,
     kelvin_decikelvin_to_celsius,
 )
@@ -25,11 +33,20 @@ from hardware_admin.domain.models import (
     Measurement,
     ThermalReading,
 )
-from hardware_admin.infrastructure.commands import NativeCommandResult
-from hardware_admin.infrastructure.powershell import CommandResult, PowerShellQuery
+from hardware_admin.infrastructure.commands import (
+    NativeCommandResult,
+    SafeCommandRunner,
+    is_trusted_nvidia_smi_path,
+)
+from hardware_admin.infrastructure.powershell import (
+    CommandResult,
+    PowerShellQuery,
+    SafePowerShellRunner,
+)
 from hardware_admin.reports.html_report import export_html
 from hardware_admin.reports.json_report import build_payload
 from hardware_admin.reports.txt_report import render_text
+from hardware_admin.services.scan_service import ScanService
 
 
 def _now() -> datetime:
@@ -49,10 +66,10 @@ class ThermalContractAndConversionTests(TestCase):
     """Pruebas de contratos de dominio y algoritmos de conversión térmica."""
 
     def test_thermal_reading_contract(self) -> None:
-        """ThermalReading modela todos los campos obligatorios tipados sin diccionarios libres."""
+        """ThermalReading modela todos los campos obligatorios tipados con fan_percent."""
         reading = ThermalReading(
             source_name="Sensor 1",
-            target_hardware="CPU",
+            target_hardware="THERMAL_ZONE",
             temperature_celsius=45.5,
             unit="°C",
             collected_at=_now(),
@@ -60,21 +77,23 @@ class ThermalContractAndConversionTests(TestCase):
             confidence=ConfidenceLevel.HIGH,
             status=HealthStatus.NORMAL,
             is_supported=True,
-            detail="Lectura correcta",
+            detail="Zona térmica ACPI; no atribuible de forma confiable a CPU (45.5 °C)",
             is_throttling=False,
-            fan_rpm=1500,
+            fan_percent=55,
+            fan_rpm=None,
             power_watts=45.0,
             clock_mhz=3200.0,
         )
         self.assertEqual(reading.source_name, "Sensor 1")
-        self.assertEqual(reading.target_hardware, "CPU")
+        self.assertEqual(reading.target_hardware, "THERMAL_ZONE")
         self.assertEqual(reading.temperature_celsius, 45.5)
         self.assertEqual(reading.unit, "°C")
         self.assertEqual(reading.confidence, ConfidenceLevel.HIGH)
         self.assertEqual(reading.status, HealthStatus.NORMAL)
         self.assertTrue(reading.is_supported)
         self.assertFalse(reading.is_throttling)
-        self.assertEqual(reading.fan_rpm, 1500)
+        self.assertEqual(reading.fan_percent, 55)
+        self.assertIsNone(reading.fan_rpm)
         self.assertEqual(reading.power_watts, 45.0)
         self.assertEqual(reading.clock_mhz, 3200.0)
 
@@ -124,26 +143,29 @@ class WmiThermalZoneProviderTests(TestCase):
         self.provider = WmiThermalZoneProvider(self.runner)
 
     def test_wmi_thermal_zone_healthy(self) -> None:
-        """Zonas térmicas con 3082 dK (35.0 °C) generan estado NORMAL y confianza HIGH."""
+        """Zonas térmicas con 3082 dK (35.0 °C) generan estado NORMAL, confianza HIGH y target THERMAL_ZONE."""
         wmi_json = '[{"InstanceName":"ACPI\\\\ThermalZone\\\\TZ01_0","CurrentTemperature":3082,"CriticalTripPoint":3732}]'
         self.runner.run.return_value = mock_cmd_result(wmi_json, PowerShellQuery.THERMAL_ZONE)
 
         readings = self.provider.read_temperatures()
         self.assertEqual(len(readings), 1)
         r = readings[0]
+        self.assertEqual(r.target_hardware, "THERMAL_ZONE")
         self.assertEqual(r.status, HealthStatus.NORMAL)
         self.assertEqual(r.temperature_celsius, 35.0)
         self.assertEqual(r.confidence, ConfidenceLevel.HIGH)
         self.assertTrue(r.is_supported)
+        self.assertIn("Zona térmica ACPI; no atribuible de forma confiable a CPU", r.detail)
         self.assertEqual(len(r.measurements), 1)
         self.assertEqual(r.measurements[0].value, 35.0)
 
     def test_wmi_thermal_zone_warning_and_critical(self) -> None:
-        """Zonas térmicas a 82 °C dan WARNING; a 96 °C dan CRITICAL."""
+        """Zonas térmicas a 82 °C dan WARNING; a 96 °C dan CRITICAL pero conservan target THERMAL_ZONE."""
         # 82 °C -> 2732 + 820 = 3552 dK
         wmi_json_warn = '[{"InstanceName":"TZ01","CurrentTemperature":3552}]'
         self.runner.run.return_value = mock_cmd_result(wmi_json_warn, PowerShellQuery.THERMAL_ZONE)
         r_warn = self.provider.read_temperatures()[0]
+        self.assertEqual(r_warn.target_hardware, "THERMAL_ZONE")
         self.assertEqual(r_warn.status, HealthStatus.WARNING)
         self.assertEqual(r_warn.temperature_celsius, 82.0)
 
@@ -151,6 +173,7 @@ class WmiThermalZoneProviderTests(TestCase):
         wmi_json_crit = '[{"InstanceName":"TZ01","CurrentTemperature":3692}]'
         self.runner.run.return_value = mock_cmd_result(wmi_json_crit, PowerShellQuery.THERMAL_ZONE)
         r_crit = self.provider.read_temperatures()[0]
+        self.assertEqual(r_crit.target_hardware, "THERMAL_ZONE")
         self.assertEqual(r_crit.status, HealthStatus.CRITICAL)
         self.assertEqual(r_crit.temperature_celsius, 96.0)
 
@@ -165,6 +188,7 @@ class WmiThermalZoneProviderTests(TestCase):
         readings = self.provider.read_temperatures()
         self.assertEqual(len(readings), 1)
         r = readings[0]
+        self.assertEqual(r.target_hardware, "THERMAL_ZONE")
         self.assertEqual(r.status, HealthStatus.ERROR)
         self.assertIsNone(r.temperature_celsius)
         self.assertIn("permiso", r.detail.lower())
@@ -180,6 +204,7 @@ class WmiThermalZoneProviderTests(TestCase):
         )
         readings = self.provider.read_temperatures()
         self.assertEqual(len(readings), 1)
+        self.assertEqual(readings[0].target_hardware, "THERMAL_ZONE")
         self.assertEqual(readings[0].status, HealthStatus.ERROR)
         self.assertIn("agotado", readings[0].detail.lower())
 
@@ -188,6 +213,7 @@ class WmiThermalZoneProviderTests(TestCase):
         self.runner.run.return_value = mock_cmd_result("[]", PowerShellQuery.THERMAL_ZONE)
         readings = self.provider.read_temperatures()
         self.assertEqual(len(readings), 1)
+        self.assertEqual(readings[0].target_hardware, "THERMAL_ZONE")
         self.assertEqual(readings[0].status, HealthStatus.NOT_SUPPORTED)
         self.assertFalse(readings[0].is_supported)
 
@@ -229,8 +255,8 @@ class StorageThermalProviderTests(TestCase):
         self.assertIsNone(readings[0].temperature_celsius)
 
 
-class NvidiaGpuThermalProviderTests(TestCase):
-    """Pruebas de consulta y parseo estricto a nvidia-smi."""
+class NvidiaGpuThermalProviderAndSecurityTests(TestCase):
+    """Pruebas de consulta, endurecimiento de rutas de confianza y parseo estricto de 9 columnas."""
 
     def setUp(self) -> None:
         self.runner = MagicMock()
@@ -239,8 +265,8 @@ class NvidiaGpuThermalProviderTests(TestCase):
             custom_binary_path=r"C:\Windows\System32\nvidia-smi.exe",
         )
 
-    def test_nvidia_smi_valid_healthy(self) -> None:
-        """Parseo de CSV de 9 columnas con temperatura normal y sin throttling."""
+    def test_nvidia_smi_valid_healthy_with_fan_percent(self) -> None:
+        """Parseo de CSV de 9 columnas exactas; fan.speed se modela como porcentaje (fan_percent)."""
         csv_out = "0, NVIDIA GeForce GTX 1050 Ti, 35, 15, 40, [N/A], 607, Not Active, Not Active\n"
         self.runner.nvidia_smi_query.return_value = NativeCommandResult(
             command=("nvidia-smi.exe",),
@@ -252,12 +278,57 @@ class NvidiaGpuThermalProviderTests(TestCase):
         self.assertEqual(len(readings), 1)
         r = readings[0]
         self.assertEqual(r.temperature_celsius, 35.0)
-        self.assertEqual(r.fan_rpm, 40)
-        self.assertIsNone(r.power_watts)  # [N/A] parseado a None
+        self.assertEqual(r.fan_percent, 40)
+        self.assertIsNone(r.fan_rpm)
+        self.assertIsNone(r.power_watts)
         self.assertEqual(r.clock_mhz, 607.0)
         self.assertFalse(r.is_throttling)
         self.assertEqual(r.status, HealthStatus.NORMAL)
         self.assertEqual(r.confidence, ConfidenceLevel.HIGH)
+
+        fan_meas = [m for m in r.measurements if "Ventilador" in m.name]
+        self.assertEqual(len(fan_meas), 1)
+        self.assertEqual(fan_meas[0].unit, "%")
+        self.assertEqual(fan_meas[0].value, 40)
+
+    def test_nvidia_smi_strict_9_columns_rejects_fewer_columns(self) -> None:
+        """CSV con 8 columnas (faltantes) se rechaza estrictamente."""
+        csv_8_cols = "0, GPU, 40, 20, 50, 100, 1200, Not Active\n"
+        self.runner.nvidia_smi_query.return_value = NativeCommandResult(
+            command=("nvidia-smi.exe",),
+            output=csv_8_cols,
+            exit_code=0,
+        )
+        readings = self.provider.read_temperatures()
+        self.assertEqual(len(readings), 1)
+        self.assertEqual(readings[0].status, HealthStatus.NOT_SUPPORTED)
+
+    def test_nvidia_smi_strict_9_columns_rejects_extra_columns(self) -> None:
+        """CSV con 10 columnas (de más) se rechaza estrictamente."""
+        csv_10_cols = "0, GPU, 40, 20, 50, 100, 1200, Not Active, Not Active, ExtraCol\n"
+        self.runner.nvidia_smi_query.return_value = NativeCommandResult(
+            command=("nvidia-smi.exe",),
+            output=csv_10_cols,
+            exit_code=0,
+        )
+        readings = self.provider.read_temperatures()
+        self.assertEqual(len(readings), 1)
+        self.assertEqual(readings[0].status, HealthStatus.NOT_SUPPORTED)
+
+    def test_safe_command_runner_rejects_untrusted_nvidia_smi_path(self) -> None:
+        """SafeCommandRunner rechaza rutas arbitrarias fuera del allowlist sin invocar subprocesos."""
+        runner = SafeCommandRunner()
+        res = runner.nvidia_smi_query(r"C:\arbitrary\path\nvidia-smi.exe")
+        self.assertEqual(res.exit_code, -1)
+        self.assertIn("no confiable", res.error)
+
+    def test_safe_command_runner_accepts_trusted_nvidia_smi_path(self) -> None:
+        """SafeCommandRunner acepta rutas verificadas en allowlist oficial."""
+        self.assertTrue(is_trusted_nvidia_smi_path(r"C:\Windows\System32\nvidia-smi.exe"))
+        self.assertTrue(
+            is_trusted_nvidia_smi_path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe")
+        )
+        self.assertFalse(is_trusted_nvidia_smi_path(r"C:\Users\test\nvidia-smi.exe"))
 
     def test_nvidia_smi_throttling_triggers_critical(self) -> None:
         """Banderas explícitas de hw_thermal_slowdown o sw_thermal_slowdown activan CRITICAL."""
@@ -308,44 +379,185 @@ class NvidiaGpuThermalProviderTests(TestCase):
         self.assertEqual(readings[0].status, HealthStatus.NOT_SUPPORTED)
 
 
-class ThermalVerticalSliceIntegrationTests(TestCase):
-    """Integración vertical: Recolector -> Motor -> Recomendaciones -> Reportes."""
+class ThermalSnapshotAndDeduplicationTests(TestCase):
+    """Garantía de cero duplicación de consultas en escaneo completo y consumo de snapshot idéntico."""
 
-    def test_cpu_collector_with_thermal_provider(self) -> None:
-        ps_runner = MagicMock()
-        ps_runner.run.return_value = mock_cmd_result(
-            '[{"Name":"Intel Core i7-10700K"}]',
-            PowerShellQuery.CPU_INFO,
-        )
-
-        mock_thermal = MagicMock()
-        mock_thermal.read_temperatures.return_value = [
+    def test_thermal_snapshot_provider_caches_identically(self) -> None:
+        mock_sub = MagicMock()
+        mock_sub.is_available.return_value = True
+        mock_sub.read_temperatures.return_value = [
             ThermalReading(
                 source_name="TZ01",
-                target_hardware="CPU",
-                temperature_celsius=48.0,
+                target_hardware="THERMAL_ZONE",
+                temperature_celsius=40.0,
                 unit="°C",
                 collected_at=_now(),
                 duration_seconds=0.01,
                 confidence=ConfidenceLevel.HIGH,
                 status=HealthStatus.NORMAL,
                 is_supported=True,
-                detail="Temperatura ACPI: 48.0 °C",
-                measurements=(Measurement("Temperatura (TZ01)", 48.0, "°C"),),
+                detail="Zona térmica ACPI; no atribuible de forma confiable a CPU (40.0 °C)",
             )
         ]
 
-        def mock_cpu_percent(interval: float | None = None, percpu: bool = False) -> Any:
-            return [15.0, 15.0] if percpu else 15.0
+        snapshot_provider = ThermalSnapshotProvider(mock_sub)
+        res1 = snapshot_provider.read_temperatures()
+        res2 = snapshot_provider.read_temperatures()
 
-        with patch("psutil.cpu_percent", side_effect=mock_cpu_percent), patch("psutil.cpu_count", return_value=8), patch("psutil.cpu_freq", return_value=None):
+        self.assertEqual(mock_sub.read_temperatures.call_count, 1)
+        self.assertIs(res1, res2)
+
+    def test_acpi_thermal_zone_does_not_degrade_cpu_status(self) -> None:
+        """Una zona térmica ACPI alta (98 °C) NO degrada el estado de CPU a CRITICAL ni WARNING."""
+        ps_runner = MagicMock()
+        ps_runner.run.return_value = mock_cmd_result(
+            '[{"Name":"Intel Core i7"}]',
+            PowerShellQuery.CPU_INFO,
+        )
+
+        mock_thermal = MagicMock()
+        mock_thermal.read_temperatures.return_value = [
+            ThermalReading(
+                source_name="ACPI Thermal Zone",
+                target_hardware="THERMAL_ZONE",
+                temperature_celsius=98.0,
+                unit="°C",
+                collected_at=_now(),
+                duration_seconds=0.01,
+                confidence=ConfidenceLevel.HIGH,
+                status=HealthStatus.CRITICAL,
+                is_supported=True,
+                detail="Zona térmica ACPI; no atribuible de forma confiable a CPU (98.0 °C)",
+            )
+        ]
+
+        def mock_cpu(interval: float | None = None, percpu: bool = False) -> Any:
+            return [12.0] if percpu else 12.0
+
+        with patch("psutil.cpu_percent", side_effect=mock_cpu), patch("psutil.cpu_count", return_value=8), patch("psutil.cpu_freq", return_value=None):
             collector = CpuCollector(ps_runner, thermal_provider=mock_thermal)
             res = collector.collect()
 
         self.assertEqual(res.status, HealthStatus.NORMAL)
-        self.assertIn("Telemetría térmica CPU", res.facts)
-        meas_names = [m.name for m in res.measurements]
-        self.assertIn("Temperatura (TZ01)", meas_names)
+        self.assertIsNone(res.possible_problem)
+        self.assertIn("Zona térmica ACPI; no atribuible de forma confiable a CPU", res.facts.get("Zonas térmicas ACPI", ""))
+
+    def test_single_query_per_provider_during_full_scan(self) -> None:
+        """En un escaneo completo, WMI térmico y nvidia-smi se ejecutan como máximo 1 vez."""
+        wmi_counter = {"calls": 0}
+        nvidia_counter = {"calls": 0}
+        storage_rel_counter = {"calls": 0}
+
+        def mock_ps_run(query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+            if query == PowerShellQuery.THERMAL_ZONE:
+                wmi_counter["calls"] += 1
+                return mock_cmd_result(
+                    '[{"InstanceName":"TZ01","CurrentTemperature":3100}]',
+                    PowerShellQuery.THERMAL_ZONE,
+                )
+            if query == PowerShellQuery.STORAGE_RELIABILITY:
+                storage_rel_counter["calls"] += 1
+                return mock_cmd_result(
+                    '[{"FriendlyName":"SSD 1","Temperature":38,"DeviceId":0}]',
+                    PowerShellQuery.STORAGE_RELIABILITY,
+                )
+            if query == PowerShellQuery.VIDEO_CONTROLLERS:
+                return mock_cmd_result(
+                    '[{"Tipo":"GPU","Nombre":"NVIDIA GPU","Estado":"OK"}]',
+                    PowerShellQuery.VIDEO_CONTROLLERS,
+                )
+            if query == PowerShellQuery.PHYSICAL_DISKS:
+                return mock_cmd_result(
+                    '[{"DeviceId":0,"FriendlyName":"SSD 1","MediaType":"SSD","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                    PowerShellQuery.PHYSICAL_DISKS,
+                )
+            if query == PowerShellQuery.DISKS:
+                return mock_cmd_result(
+                    '[{"Number":0,"FriendlyName":"SSD 1","BusType":"NVMe","HealthStatus":"Healthy","Size":512000000000}]',
+                    PowerShellQuery.DISKS,
+                )
+            if query == PowerShellQuery.VOLUMES:
+                return mock_cmd_result(
+                    '[{"DriveLetter":"C","FileSystem":"NTFS","Size":500000000000,"SizeRemaining":300000000000,"HealthStatus":"Healthy"}]',
+                    PowerShellQuery.VOLUMES,
+                )
+            if query == PowerShellQuery.USB_STORAGE:
+                return mock_cmd_result('[]', PowerShellQuery.USB_STORAGE)
+            return mock_cmd_result('[]', query)
+
+        class MockSafePowerShellRunner(SafePowerShellRunner):
+            def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
+                if use_cache and query in self._cache:
+                    return self._cache[query]
+                res = mock_ps_run(query, use_cache)
+                if use_cache:
+                    self._cache[query] = res
+                return res
+
+        class MockSafeCommandRunner(SafeCommandRunner):
+            def nvidia_smi_query(self, binary_path: str, timeout: float = 5.0) -> NativeCommandResult:
+                nvidia_counter["calls"] += 1
+                return NativeCommandResult(
+                    command=("nvidia-smi",),
+                    output="0, NVIDIA GPU, 42, 10, 30, 50.0, 1000, Not Active, Not Active\n",
+                    exit_code=0,
+                )
+
+        runner = MockSafePowerShellRunner()
+        cmd_runner = MockSafeCommandRunner()
+
+        wmi_provider = WmiThermalZoneProvider(runner)
+        gpu_provider = NvidiaGpuThermalProvider(
+            runner=cmd_runner,
+            custom_binary_path=r"C:\Windows\System32\nvidia-smi.exe",
+        )
+        storage_provider = StorageThermalProvider(runner=runner)
+
+        composite = CompositeThermalProvider((wmi_provider, gpu_provider, storage_provider))
+        snapshot_provider = ThermalSnapshotProvider(composite)
+
+        collectors = (
+            SystemCollector(runner, thermal_provider=snapshot_provider),
+            CpuCollector(runner, thermal_provider=snapshot_provider),
+            StorageCollector(runner, thermal_provider=snapshot_provider),
+            MonitorGpuCollector(runner, thermal_provider=snapshot_provider),
+        )
+
+        def mock_scan_cpu(interval: float | None = None, percpu: bool = False) -> Any:
+            return [10.0] if percpu else 10.0
+
+        with patch("psutil.cpu_percent", side_effect=mock_scan_cpu), \
+             patch("psutil.cpu_count", return_value=8), \
+             patch("psutil.cpu_freq", return_value=None), \
+             patch("psutil.disk_partitions", return_value=[]), \
+             patch("psutil.disk_usage", side_effect=OSError):
+            service = ScanService(collectors=collectors, diagnostic_engine=RuleBasedDiagnosticEngine())
+            report = service.scan()
+
+        self.assertLessEqual(wmi_counter["calls"], 1)
+        self.assertLessEqual(nvidia_counter["calls"], 1)
+        self.assertLessEqual(storage_rel_counter["calls"], 1)
+
+        sys_res = next(r for r in report.results if r.component == ComponentKind.SYSTEM)
+        self.assertIn("Sensores térmicos del equipo", sys_res.facts)
+
+        storage_res = next(r for r in report.results if r.component == ComponentKind.DISK)
+        self.assertIn("Telemetría térmica de almacenamiento", storage_res.facts)
+
+        gpu_res = next(r for r in report.results if r.component == ComponentKind.MONITOR_GPU)
+        self.assertIn("Telemetría térmica GPU", gpu_res.facts)
+
+    def test_build_default_collectors_wiring(self) -> None:
+        """build_default_collectors cablea los recolectores con ThermalSnapshotProvider por defecto."""
+        collectors = build_default_collectors()
+        self.assertTrue(any(isinstance(c, StorageCollector) for c in collectors))
+        self.assertTrue(any(isinstance(c, SystemCollector) for c in collectors))
+        self.assertTrue(any(isinstance(c, CpuCollector) for c in collectors))
+        self.assertTrue(any(isinstance(c, MonitorGpuCollector) for c in collectors))
+
+
+class ThermalVerticalSliceIntegrationTests(TestCase):
+    """Integración vertical: Recolector -> Motor -> Recomendaciones -> Reportes."""
 
     def test_gpu_collector_with_thermal_provider(self) -> None:
         ps_runner = MagicMock()
@@ -367,6 +579,7 @@ class ThermalVerticalSliceIntegrationTests(TestCase):
                 status=HealthStatus.WARNING,
                 is_supported=True,
                 detail="Telemetría GPU NVIDIA oficial: 84 °C",
+                fan_percent=65,
                 measurements=(Measurement("Temperatura GPU (1050 Ti)", 84.0, "°C"),),
             )
         ]
@@ -377,6 +590,8 @@ class ThermalVerticalSliceIntegrationTests(TestCase):
         self.assertEqual(res.status, HealthStatus.WARNING)
         self.assertIn("Telemetría térmica GPU", res.facts)
         self.assertIn("Temperatura elevada en GPU", str(res.possible_problem) or "")
+        telemetry = res.facts["Telemetría térmica GPU"][0]
+        self.assertEqual(telemetry["Ventilador"], "65%")
 
     def test_reports_serialization_with_thermal_data(self) -> None:
         """Reportes JSON, HTML y TXT exportan mediciones térmicas sin romper compatibilidad."""

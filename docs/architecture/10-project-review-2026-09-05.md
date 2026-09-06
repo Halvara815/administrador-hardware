@@ -12,14 +12,14 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **227 passed, 29 subtests passed**;
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **219 passed, 8 skipped, 29 subtests passed**;
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `1302f42ca0be7e7eceb28ba242f4e833c359a588443ec0fd00de344230433796`
-  - Fecha de compilación (EXE): `2026-09-05T17:53:58-06:00`
+  - SHA-256 (EXE): `ea8689066cee54fd990d479b84135019bd3a53981d7fa0ff81cb4f19cbfa75e3`
+  - Fecha de compilación (EXE): `2026-09-05T18:18:27-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `0d00eb3d9339882592d860cbff3cc9d102f3cdd8cb8d2b45ef03f716e00021c2`
+  - SHA-256 (ZIP): `21df4d74b02b5ba298bb55d759b1b449499a011bfe7ce8848a60dd947fcb793a`
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
