@@ -132,6 +132,6 @@ class ThermalSensorProvider(ABC):
 ## 5. Decisión y Reglas de Rollback
 
 - **Decisión**: Se implementa la **Alternativa C (Híbrido Especializado)** con interfaz `ThermalSensorProvider` y control de ciclo de vida en `ScanService`.
-- **Frontera de Sesión**: `ScanService.scan()` reinicia deterministamente las instancias compartidas de `ThermalSnapshotProvider` y `SafePowerShellRunner` al iniciar cada diagnóstico, garantizando cero consultas duplicadas dentro de una sesión y cero datos obsoletos entre sesiones consecutivas (validado en commit `a76aaca242f51140125193dabcd56e1833f4198f`).
+- **Frontera de Sesión y Deduplicación Concurrente**: `ScanService.scan()` reinicia deterministamente las instancias compartidas de `ThermalSnapshotProvider` y `SafePowerShellRunner` al iniciar cada diagnóstico. Además, `SafePowerShellRunner` implementa coordinación concurrente por consulta (single-flight via `Future`) evitando ejecuciones paralelas redundantes de `Get-StorageReliabilityCounter` o consultas WMI entre hilos de escaneo concurrentes (validado en commit `39da2e688fea793b0f84262cb0541c0ead821f63`).
 - **Procedimiento de Rollback**: Para deshabilitar la telemetría térmica o volver a la línea base previa, basta con instanciar `NullThermalProvider` en `ScanService` y en los recolectores de diagnóstico, devolviendo de inmediato `NOT_SUPPORTED` sin ejecutar consultas WMI térmicas ni `nvidia-smi`.
 - **Fase F4**: Permanece **ESTRICTAMENTE NO INICIADA**.
