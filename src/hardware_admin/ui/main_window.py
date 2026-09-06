@@ -203,6 +203,58 @@ def _dict_list(facts: dict[str, Any], key: str) -> list[dict[str, Any]]:
     return [item for item in raw if isinstance(item, dict)]
 
 
+def thermal_dashboard_rows(
+    results: dict[ComponentKind, ComponentResult],
+) -> list[dict[str, str]]:
+    """Normaliza las lecturas F3 para su panel visible, sin inventar sensores.
+
+    La telemetría puede llegar desde distintos recolectores. Esta función conserva
+    el origen y el límite de cada fuente para que una zona ACPI no se presente
+    como temperatura confirmada de CPU.
+    """
+    sources = (
+        (ComponentKind.SYSTEM, "Sensores térmicos del equipo", "Sistema"),
+        (ComponentKind.CPU, "Telemetría térmica CPU", "CPU"),
+        (ComponentKind.MONITOR_GPU, "Telemetría térmica GPU", "GPU"),
+        (ComponentKind.DISK, "Telemetría térmica de almacenamiento", "Almacenamiento"),
+    )
+    rows: list[dict[str, str]] = []
+    for component, fact_key, area in sources:
+        result = results.get(component)
+        if result is None:
+            continue
+        value = result.facts.get(fact_key)
+        if isinstance(value, str):
+            rows.append(
+                {
+                    "area": area,
+                    "source": "Sin lectura disponible",
+                    "temperature": "—",
+                    "status": "No soportado",
+                    "detail": value,
+                }
+            )
+            continue
+        for item in _dict_list(result.facts, fact_key):
+            source = str(
+                item.get("Origen")
+                or item.get("Sensor")
+                or item.get("Dispositivo")
+                or item.get("Unidad")
+                or "Sensor"
+            )
+            rows.append(
+                {
+                    "area": area,
+                    "source": source,
+                    "temperature": str(item.get("Temperatura") or "No disponible"),
+                    "status": str(item.get("Estado") or "No determinado"),
+                    "detail": str(item.get("Detalle") or "Sin detalle adicional"),
+                }
+            )
+    return rows
+
+
 def core_bars(facts: dict[str, Any]) -> list[Bar]:
     """Una barra por nucleo logico, coloreada con la regla oficial de CPU."""
     return [
@@ -592,6 +644,115 @@ class EvidenceWindow(ctk.CTkToplevel):
         self.clipboard_append(self.console.get("1.0", "end-1c"))
 
 
+class ThermalDashboardWindow(ctk.CTkToplevel):
+    """Vista legible de los sensores de F3, separada de la evidencia cruda."""
+
+    def __init__(self, master: Any, rows: Sequence[dict[str, str]]) -> None:
+        super().__init__(master, fg_color=theme.BACKGROUND)
+        self.title("Temperaturas y sensores")
+        self.geometry("820x600")
+        self.minsize(580, 380)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="TEMPERATURAS Y SENSORES",
+            font=ctk.CTkFont(size=19, weight="bold"),
+            text_color=theme.TEXT,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            header,
+            text="Lecturas del último análisis; no se inventan valores no expuestos por el hardware.",
+            font=ctk.CTkFont(size=12),
+            text_color=theme.MUTED,
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+        ctk.CTkButton(
+            header,
+            text="Cerrar",
+            command=self.withdraw,
+            width=96,
+            height=32,
+            corner_radius=8,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+        ).grid(row=0, column=1, rowspan=2, sticky="e")
+
+        self.body = ctk.CTkScrollableFrame(
+            self,
+            fg_color=theme.SURFACE,
+            border_width=1,
+            border_color=theme.BORDER,
+            corner_radius=10,
+        )
+        self.body.grid(row=1, column=0, sticky="nsew", padx=22, pady=(0, 22))
+        self.body.grid_columnconfigure(0, weight=1)
+        self.update_rows(rows)
+
+    def update_rows(self, rows: Sequence[dict[str, str]]) -> None:
+        for child in self.body.winfo_children():
+            child.destroy()
+        if not rows:
+            ctk.CTkLabel(
+                self.body,
+                text=(
+                    "Aún no hay lecturas térmicas. Use «ANALIZAR EQUIPO».\n\n"
+                    "Si después del análisis aparece «No soportado», el fabricante o Windows "
+                    "no expone ese sensor de forma fiable."
+                ),
+                justify="left",
+                anchor="w",
+                font=ctk.CTkFont(size=13),
+                text_color=theme.MUTED,
+            ).grid(row=0, column=0, sticky="ew", padx=18, pady=18)
+            return
+        for index, row in enumerate(rows):
+            status = row["status"].lower()
+            color = theme.GREEN if status == HealthStatus.NORMAL.value else (
+                theme.YELLOW if status == HealthStatus.WARNING.value else (
+                    theme.RED if status in {HealthStatus.CRITICAL.value, HealthStatus.ERROR.value} else theme.MUTED
+                )
+            )
+            card = ctk.CTkFrame(
+                self.body,
+                fg_color=theme.SURFACE_ALT,
+                corner_radius=8,
+                border_width=1,
+                border_color=theme.BORDER_SOFT,
+            )
+            card.grid(row=index, column=0, sticky="ew", padx=8, pady=5)
+            card.grid_columnconfigure(1, weight=1)
+            ctk.CTkLabel(
+                card,
+                text=row["temperature"],
+                font=ctk.CTkFont(size=23, weight="bold"),
+                text_color=color,
+                width=116,
+            ).grid(row=0, column=0, rowspan=2, padx=(14, 10), pady=12)
+            ctk.CTkLabel(
+                card,
+                text=f"{row['area']} · {row['source']}",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=theme.TEXT,
+                anchor="w",
+            ).grid(row=0, column=1, sticky="ew", padx=(0, 14), pady=(12, 2))
+            ctk.CTkLabel(
+                card,
+                text=f"{STATUS_LABELS.get(HealthStatus(status), row['status']) if status in HealthStatus._value2member_map_ else row['status']} · {row['detail']}",
+                font=ctk.CTkFont(size=11),
+                text_color=theme.MUTED,
+                justify="left",
+                anchor="w",
+                wraplength=570,
+            ).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=(2, 12))
+
+
 class HardwareAdminApp(ctk.CTk):
     def __init__(
         self,
@@ -618,6 +779,7 @@ class HardwareAdminApp(ctk.CTk):
         self.cards: dict[ComponentKind, StatusCard] = {}
         self.worker_events: Queue[tuple[str, Any]] = Queue()
         self.evidence_window: EvidenceWindow | None = None
+        self.thermal_window: ThermalDashboardWindow | None = None
         self.icons = IconCache()
         self.nav_font = ctk.CTkFont(size=13)
         self.nav_font_selected = ctk.CTkFont(size=13, weight="bold")
@@ -835,6 +997,22 @@ class HardwareAdminApp(ctk.CTk):
         )
         self.battery_report_button.grid(row=0, column=2, sticky="e", padx=(0, 10))
 
+        self.thermal_dashboard_button = ctk.CTkButton(
+            title_row,
+            text="Temperaturas y sensores",
+            command=self.open_thermal_dashboard,
+            height=34,
+            width=190,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.thermal_dashboard_button.grid(row=0, column=3, sticky="e", padx=(0, 10))
+
         self.section_button = ctk.CTkButton(
             title_row,
             text="Analizar sistema",
@@ -851,7 +1029,7 @@ class HardwareAdminApp(ctk.CTk):
             border_color=theme.BORDER,
             text_color=theme.ACCENT_TEXT,
         )
-        self.section_button.grid(row=0, column=3, sticky="e")
+        self.section_button.grid(row=0, column=4, sticky="e")
 
         cards_frame = ctk.CTkFrame(content, fg_color="transparent")
         cards_frame.grid(row=1, column=0, sticky="ew", pady=(0, 18))
@@ -1561,6 +1739,7 @@ class HardwareAdminApp(ctk.CTk):
 
         self.conclusion_label.configure(text=self._conclusion_text(self.report))
         self._update_cards()
+        self._refresh_thermal_dashboard()
         self._show_selected_evidence()
 
     @staticmethod
@@ -1640,6 +1819,26 @@ class HardwareAdminApp(ctk.CTk):
             fastest = max(speeds)
             return f"{fastest // 1000} Gbps" if fastest >= 1000 else f"{fastest} Mbps"
         return f"{connected} activa(s)"
+
+    def open_thermal_dashboard(self) -> None:
+        """Abre una ventana hija con las lecturas F3 del último análisis."""
+        rows = thermal_dashboard_rows(self.results_by_kind)
+        window = self.thermal_window
+        if window is not None and window.winfo_exists():
+            window.update_rows(rows)
+            window.deiconify()
+            window.lift()
+            window.focus()
+            return
+        self.thermal_window = ThermalDashboardWindow(self, rows)
+
+    def _refresh_thermal_dashboard(self) -> None:
+        rows = thermal_dashboard_rows(self.results_by_kind)
+        suffix = f" · {len(rows)} lectura(s)" if rows else ""
+        self.thermal_dashboard_button.configure(text=f"Temperaturas y sensores{suffix}")
+        window = self.thermal_window
+        if window is not None and window.winfo_exists():
+            window.update_rows(rows)
 
     def _show_selected_evidence(self) -> None:
         result = self.results_by_kind.get(self.selected_component)

@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from unittest import TestCase
 
-from hardware_admin.domain.models import ComponentKind
+from hardware_admin.domain.models import ComponentKind, ComponentResult, HealthStatus
 from hardware_admin.services.monitoring_service import Sample
 from hardware_admin.ui import theme
 from hardware_admin.ui.main_window import (
@@ -14,6 +14,7 @@ from hardware_admin.ui.main_window import (
     core_bars,
     fit_window,
     series_for,
+    thermal_dashboard_rows,
     volume_bars,
 )
 
@@ -135,6 +136,64 @@ class SectionChartContractTests(TestCase):
         self.assertEqual(core_bars({}), [])
         self.assertEqual(volume_bars({}), [])
         self.assertEqual(adapter_bars({}), [])
+
+
+class ThermalDashboardContractTests(TestCase):
+    def test_thermal_rows_make_gpu_and_storage_values_visible(self) -> None:
+        rows = thermal_dashboard_rows(
+            {
+                ComponentKind.MONITOR_GPU: ComponentResult(
+                    ComponentKind.MONITOR_GPU,
+                    "Monitor y GPU",
+                    {
+                        "Telemetría térmica GPU": [
+                            {
+                                "Dispositivo": "GPU 0: NVIDIA",
+                                "Temperatura": "62.0 °C",
+                                "Estado": "normal",
+                                "Detalle": "Sin throttling térmico",
+                            }
+                        ]
+                    },
+                    status=HealthStatus.NORMAL,
+                ),
+                ComponentKind.DISK: ComponentResult(
+                    ComponentKind.DISK,
+                    "Almacenamiento",
+                    {
+                        "Telemetría térmica de almacenamiento": [
+                            {
+                                "Unidad": "NVMe",
+                                "Temperatura": "44.0 °C",
+                                "Estado": "normal",
+                                "Detalle": "Sensor SMART",
+                            }
+                        ]
+                    },
+                    status=HealthStatus.NORMAL,
+                ),
+            }
+        )
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["temperature"], "62.0 °C")
+        self.assertEqual(rows[0]["area"], "GPU")
+        self.assertEqual(rows[1]["source"], "NVMe")
+
+    def test_thermal_rows_preserve_a_missing_sensor_explanation(self) -> None:
+        rows = thermal_dashboard_rows(
+            {
+                ComponentKind.CPU: ComponentResult(
+                    ComponentKind.CPU,
+                    "CPU",
+                    {"Telemetría térmica CPU": "No disponible de forma nativa"},
+                )
+            }
+        )
+
+        self.assertEqual(rows[0]["temperature"], "—")
+        self.assertEqual(rows[0]["status"], "No soportado")
+        self.assertIn("No disponible", rows[0]["detail"])
         self.assertEqual(core_bars({"_nucleos": "no disponible"}), [])
 
 

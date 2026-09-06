@@ -12,7 +12,7 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **231 passed, 8 skipped, 1 warning, 29 subtests passed** (total: 239 pruebas evaluadas);
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **233 passed, 8 skipped, 1 warning, 29 subtests passed** (total: 241 pruebas evaluadas);
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
@@ -36,7 +36,7 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 | Firmware, Placa base, TPM y Secure Boot | COMPLETADA | `core.py`, `powershell.py`: Win32_BaseBoard, Win32_BIOS, Get-Tpm, Confirm-SecureBootUEFI |
 | Módulos físicos de memoria RAM (SMBIOS) | COMPLETADA | `core.py`, `powershell.py`: desglose por ranura, DMTF SMBIOS (DDR4/DDR5/etc.), velocidad configurada |
 | Periféricos clave (PnP extendido) | COMPLETADA | `core.py`, `powershell.py`: Bluetooth, cámara, multimedia, entrada; fallos aislados sin condenar el subsistema |
-| Telemetría térmica, sensores y throttling (Fase F3) | NEEDS_USER_VERIFICATION | `thermal.py`, `core.py`, `gpu.py`: arquitectura desacoplada `ThermalSensorProvider`, WMI ACPI, SMART storage y NVIDIA SMI con banderas oficiales de throttling térmico |
+| Telemetría térmica, sensores y throttling (Fase F3) | NEEDS_USER_VERIFICATION | `thermal.py`, recolectores y ventana hija «Temperaturas y sensores»: lecturas visibles de WMI ACPI, SMART storage y NVIDIA SMI con banderas oficiales de throttling térmico |
 | Red básica y escalonada | COMPLETADA | adaptador, IP, gateway, IP externa y DNS; timeout/presupuesto |
 | USB, PCI/PCIe y dispositivos con problema | COMPLETADA | IDs/códigos PnP, casos C2/C3 y tests |
 | GPU/monitor y drivers de inventario | COMPLETADA | WMI, versión de driver como inventario; no asesor de actualización |
@@ -74,7 +74,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. pytest ejecuta 231 passed, 8 skipped, 1 warning y 29 subtests passed (total: 239 pruebas evaluadas); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
+1. pytest ejecuta 233 passed, 8 skipped, 1 warning y 29 subtests passed (total: 241 pruebas evaluadas); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
 2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
 3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
