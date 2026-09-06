@@ -12,14 +12,16 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **233 passed, 8 skipped, 1 warning, 29 subtests passed** (total: 241 pruebas evaluadas);
+- Calidad ejecutada en este entorno (Fase F1, F2 y F3 completadas con validación física pendiente): `pytest -q` = **242 passed, 29 subtests passed** en entorno gráfico (total: 242 pruebas evaluadas; en entorno headless sin display: 233 passed, 9 skipped, 1 warning, 29 subtests passed);
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 36 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `1de1f3e7ad2c014ad034c55b9c5eb0fb264533cf5bbd98d9da6c398d158a5cf3`
-  - Fecha de compilación (EXE): `2026-09-05T19:11:06-06:00`
+  - SHA-256 (EXE): `04ae17ecdcc556db48dca5f0880db2fbf92c18c23ff1a17b48d50b7b3b59b84f`
+  - Fecha de compilación (EXE): `2026-09-05T19:30:59-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `8a0f7e57123381e718d2d0416286597f3078c63ec7a1bada7dbf27c6a7eed482`
+  - SHA-256 (ZIP): `2a358eff8aa7639f9d1e989dcf9a72a81acbb43e93c0064977a9baff58d17fb5`
+  - Intérprete de empaquetado: CPython 3.12.14 Windows x86_64 con Tcl/Tk 8.6.12 completo (`tcl86t.dll`, `tk86t.dll`, `_tkinter.pyd`).
+  - Nota de auditoría: Los builds previos generados bajo Python 3.14 quedan **INVALIDADOS** debido a que carecían de binarios Tcl/Tk funcionales (`ModuleNotFoundError: No module named 'tkinter'`). El nuevo build ha sido validado mediante `--smoke-test` (apertura y cierre de ventana principal y ventana hija de sensores) tanto en el EXE de `dist` como en el EXE extraído del ZIP.
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -74,13 +76,14 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. pytest ejecuta 233 passed, 8 skipped, 1 warning y 29 subtests passed (total: 241 pruebas evaluadas); la persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
-2. `README.md` aún describía exportación HTML como si fuese la única; se corrige
+1. pytest ejecuta 242 passed y 29 subtests passed en entorno gráfico (total: 242 pruebas evaluadas; en entorno headless sin display: 233 passed, 9 skipped, 1 warning y 29 subtests passed). La persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
+2. Los empaquetados anteriores generados bajo Python 3.14 quedan marcados como INVALIDADOS debido a la ausencia de Tcl/Tk. El nuevo empaquetado bajo CPython 3.12.14 contiene la distribución completa de Tcl/Tk y supera el smoke test tanto en `dist` como en el ZIP.
+3. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.
-3. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
+4. La trazabilidad histórica de 2026-09-04 conserva conteos anteriores (12 tests,
    21 archivos). Es evidencia histórica válida, no el estado presente. El resultado
    actual de esta revisión es el indicado arriba.
-4. No hay evidencia nueva de que el EXE de hoy se haya probado en equipo limpio,
+5. No hay evidencia nueva de que el EXE de hoy se haya probado en equipo limpio,
    ni de PR-01…PR-18. Son `NEEDS_USER_VERIFICATION`, no fallos de código.
 
 ## Orden recomendado al retomar
