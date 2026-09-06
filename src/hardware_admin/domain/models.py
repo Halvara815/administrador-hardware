@@ -80,6 +80,19 @@ class ThermalReading:
     measurements: tuple[Measurement, ...] = ()
 
 
+@dataclass(frozen=True, slots=True)
+class WindowsCriticalEvent:
+    """Registro tipado de un evento crítico del sistema Windows (Fase F4)."""
+
+    timestamp: str
+    event_id: int
+    level: str
+    provider: str
+    message: str
+    category: str
+    is_kernel_power_41: bool = False
+
+
 class ConnectivityStage(StrEnum):
     ADAPTER = "adapter"
     LOCAL_IP = "local_ip"

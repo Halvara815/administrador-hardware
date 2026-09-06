@@ -753,6 +753,131 @@ class ThermalDashboardWindow(ctk.CTkToplevel):
             ).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=(2, 12))
 
 
+class WindowsEventsWindow(ctk.CTkToplevel):
+    """Vista legible de eventos críticos de Windows (F4) con ventana de 7 días y descargo de responsabilidad."""
+
+    def __init__(self, master: Any, events: Sequence[dict[str, Any]]) -> None:
+        super().__init__(master, fg_color=theme.BACKGROUND)
+        self.title("Eventos críticos de Windows")
+        self.geometry("860x620")
+        self.minsize(600, 420)
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.protocol("WM_DELETE_WINDOW", self.withdraw)
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=22, pady=(20, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="EVENTOS CRÍTICOS DE WINDOWS",
+            font=ctk.CTkFont(size=19, weight="bold"),
+            text_color=theme.TEXT,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            header,
+            text="Ventana temporal: últimos 7 días · La ausencia de eventos no certifica salud física.",
+            font=ctk.CTkFont(size=12),
+            text_color=theme.MUTED,
+        ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+        ctk.CTkButton(
+            header,
+            text="Cerrar",
+            command=self.withdraw,
+            width=96,
+            height=32,
+            corner_radius=8,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+        ).grid(row=0, column=1, rowspan=2, sticky="e")
+
+        self.body = ctk.CTkScrollableFrame(
+            self,
+            fg_color=theme.SURFACE,
+            border_width=1,
+            border_color=theme.BORDER,
+            corner_radius=10,
+        )
+        self.body.grid(row=1, column=0, sticky="nsew", padx=22, pady=(0, 22))
+        self.body.grid_columnconfigure(0, weight=1)
+        self.update_events(events)
+
+    def update_events(self, events: Sequence[dict[str, Any]]) -> None:
+        for child in self.body.winfo_children():
+            child.destroy()
+        if not events:
+            ctk.CTkLabel(
+                self.body,
+                text=(
+                    "Sin eventos críticos registrados en los últimos 7 días.\n\n"
+                    "Aviso de cobertura: La ausencia de eventos en el registro del sistema "
+                    "no certifica por sí sola la salud física ni eléctrica de los componentes."
+                ),
+                justify="left",
+                anchor="w",
+                font=ctk.CTkFont(size=13),
+                text_color=theme.MUTED,
+            ).grid(row=0, column=0, sticky="ew", padx=18, pady=18)
+            return
+
+        for index, ev in enumerate(events):
+            cat = str(ev.get("Categoría") or "OTRO").upper()
+            is_kp41 = ev.get("Id") == 41 or cat == "REINICIO_INESPERADO"
+            is_whea = cat == "WHEA"
+            badge_color = (
+                theme.RED
+                if is_whea
+                else (theme.YELLOW if is_kp41 else theme.TEXT)
+            )
+
+            card = ctk.CTkFrame(
+                self.body,
+                fg_color=theme.SURFACE_ALT,
+                corner_radius=8,
+                border_width=1,
+                border_color=theme.BORDER_SOFT,
+            )
+            card.grid(row=index, column=0, sticky="ew", padx=8, pady=5)
+            card.grid_columnconfigure(1, weight=1)
+
+            ev_id = ev.get("Id", 0)
+            ctk.CTkLabel(
+                card,
+                text=f"ID {ev_id}\n{cat}",
+                font=ctk.CTkFont(size=13, weight="bold"),
+                text_color=badge_color,
+                width=110,
+            ).grid(row=0, column=0, rowspan=2, padx=(12, 10), pady=10)
+
+            ts = str(ev.get("Timestamp") or "")
+            if "T" in ts:
+                ts = ts.replace("T", " ").split(".")[0]
+            prov = str(ev.get("Proveedor") or "Desconocido")
+            ctk.CTkLabel(
+                card,
+                text=f"{prov} · {ts}",
+                font=ctk.CTkFont(size=12, weight="bold"),
+                text_color=theme.TEXT,
+                anchor="w",
+            ).grid(row=0, column=1, sticky="ew", padx=(0, 14), pady=(10, 2))
+
+            msg = str(ev.get("Mensaje") or "")
+            if is_kp41:
+                msg = f"{msg} (Aviso: no determina la causa raíz física del reinicio)"
+
+            ctk.CTkLabel(
+                card,
+                text=msg,
+                font=ctk.CTkFont(size=11),
+                text_color=theme.MUTED,
+                justify="left",
+                anchor="w",
+                wraplength=640,
+            ).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=(0, 10))
+
+
 class HardwareAdminApp(ctk.CTk):
     def __init__(
         self,
@@ -780,6 +905,7 @@ class HardwareAdminApp(ctk.CTk):
         self.worker_events: Queue[tuple[str, Any]] = Queue()
         self.evidence_window: EvidenceWindow | None = None
         self.thermal_window: ThermalDashboardWindow | None = None
+        self.windows_events_window: WindowsEventsWindow | None = None
         self.icons = IconCache()
         self.nav_font = ctk.CTkFont(size=13)
         self.nav_font_selected = ctk.CTkFont(size=13, weight="bold")
@@ -1013,6 +1139,22 @@ class HardwareAdminApp(ctk.CTk):
         )
         self.thermal_dashboard_button.grid(row=0, column=3, sticky="e", padx=(0, 10))
 
+        self.windows_events_button = ctk.CTkButton(
+            title_row,
+            text="Eventos de Windows",
+            command=self.open_windows_events,
+            height=34,
+            width=180,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.windows_events_button.grid(row=0, column=4, sticky="e", padx=(0, 10))
+
         self.section_button = ctk.CTkButton(
             title_row,
             text="Analizar sistema",
@@ -1029,7 +1171,7 @@ class HardwareAdminApp(ctk.CTk):
             border_color=theme.BORDER,
             text_color=theme.ACCENT_TEXT,
         )
-        self.section_button.grid(row=0, column=4, sticky="e")
+        self.section_button.grid(row=0, column=5, sticky="e")
 
         cards_frame = ctk.CTkFrame(content, fg_color="transparent")
         cards_frame.grid(row=1, column=0, sticky="ew", pady=(0, 18))
@@ -1635,8 +1777,10 @@ class HardwareAdminApp(ctk.CTk):
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
         if component is ComponentKind.SYSTEM:
             self.battery_report_button.grid()
+            self.windows_events_button.grid()
         else:
             self.battery_report_button.grid_remove()
+            self.windows_events_button.grid_remove()
 
         # Un unico hueco en la fila 3: el panel en vivo en E/S, y el de
         # graficos del apartado en CPU, RAM, discos y red.
@@ -1740,6 +1884,7 @@ class HardwareAdminApp(ctk.CTk):
         self.conclusion_label.configure(text=self._conclusion_text(self.report))
         self._update_cards()
         self._refresh_thermal_dashboard()
+        self._refresh_windows_events()
         self._show_selected_evidence()
 
     @staticmethod
@@ -1839,6 +1984,34 @@ class HardwareAdminApp(ctk.CTk):
         window = self.thermal_window
         if window is not None and window.winfo_exists():
             window.update_rows(rows)
+
+    def open_windows_events(self) -> None:
+        """Abre una ventana hija con los eventos críticos de Windows (Fase F4)."""
+        events = self._get_windows_events()
+        window = self.windows_events_window
+        if window is not None and window.winfo_exists():
+            window.update_events(events)
+            window.deiconify()
+            window.lift()
+            window.focus()
+            return
+        self.windows_events_window = WindowsEventsWindow(self, events)
+
+    def _get_windows_events(self) -> list[dict[str, Any]]:
+        sys_res = self.results_by_kind.get(ComponentKind.SYSTEM)
+        if sys_res and sys_res.facts:
+            raw_evs = sys_res.facts.get("Eventos de Windows (7 días)")
+            if isinstance(raw_evs, list):
+                return raw_evs
+        return []
+
+    def _refresh_windows_events(self) -> None:
+        events = self._get_windows_events()
+        suffix = f" · {len(events)}" if events else ""
+        self.windows_events_button.configure(text=f"Eventos de Windows{suffix}")
+        window = self.windows_events_window
+        if window is not None and window.winfo_exists():
+            window.update_events(events)
 
     def _show_selected_evidence(self) -> None:
         result = self.results_by_kind.get(self.selected_component)

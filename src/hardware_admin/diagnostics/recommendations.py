@@ -312,9 +312,95 @@ def _symptom(symptom: str) -> Recommendation:
     )
 
 
+def _system_events(result: ComponentResult) -> Recommendation:
+    prob = (result.possible_problem or "").lower()
+    if "whea" in prob:
+        return Recommendation(
+            component=ComponentKind.SYSTEM,
+            title="Investigar error de arquitectura de hardware WHEA en el visor de eventos",
+            cause=result.possible_problem or "Error crítico de hardware WHEA reportado por Windows.",
+            steps=(
+                "Abrir el Visor de eventos de Windows (eventvwr.msc) y navegar a Registros del sistema.",
+                "Filtrar por origen WHEA-Logger para identificar el componente (CPU, memoria caché, bus PCIe o memoria física).",
+                "Verificar temperaturas operativas y estabilidad de voltajes en el BIOS/UEFI.",
+                "Si los errores persisten, contactar al servicio de soporte técnico del fabricante del procesador o placa base.",
+            ),
+            rationale=(
+                "Los eventos WHEA (Windows Hardware Error Architecture) provienen directamente de los mecanismos de comprobación "
+                "del procesador y chipset. Señalan anomalías físicas de integridad eléctrica o lógica de hardware."
+            ),
+            verification="Comprobar en el visor de eventos que no se registren nuevos eventos WHEA bajo uso estándar.",
+        )
+    if "reinicio" in prob or "kernel-power" in prob or "41" in prob:
+        return Recommendation(
+            component=ComponentKind.SYSTEM,
+            title="Monitorear reinicios inesperados (Kernel-Power 41)",
+            cause="reinicio inesperado detectado, causa no determinada (Event ID 41).",
+            steps=(
+                "Comprobar el suministro eléctrico, estado de la toma de corriente y cable de alimentación o batería.",
+                "Verificar que el equipo no haya sufrido cortes abruptos de suministro eléctrico.",
+                "Revisar si los reinicios ocurren bajo carga térmica elevada.",
+                "Evitar forzar apagados manteniendo presionado el botón de encendido salvo bloqueo total.",
+            ),
+            rationale=(
+                "El evento Kernel-Power 41 únicamente indica que el sistema no se apagó de forma limpia previamente. "
+                "No identifica por sí mismo la causa raíz física, por lo que no debe atribuirse a fallo de un componente concreto sin evidencia adicional."
+            ),
+            verification="Confirmar que el equipo complete sesiones de trabajo y apagados limpios sin generar nuevos registros de Event ID 41.",
+        )
+    return _generic(result)
+
+
+def _driver(result: ComponentResult) -> Recommendation:
+    return Recommendation(
+        component=ComponentKind.DRIVER,
+        title="Revisar controladores en el sitio de soporte del fabricante (OEM)",
+        cause=result.possible_problem or "Controlador no firmado o correlacionado con código de error PnP activo.",
+        steps=(
+            "Identificar el identificador de hardware (DeviceID/InstanceId) del dispositivo afectado.",
+            "Descargar el controlador oficial exclusivamente desde la página web del fabricante del equipo o componente (OEM).",
+            "Evitar instaladores automáticos de controladores de terceros no verificados.",
+            "Instalar el paquete del controlador firmado por Microsoft WHQL y reiniciar el equipo.",
+        ),
+        rationale=(
+            "Solo se aconseja intervenir controladores cuando existe un fallo PnP confirmado, estado deshabilitado por error o firma ausente. "
+            "Una versión o fecha antigua por sí sola no justifica actualizar si el controlador funciona correctamente."
+        ),
+        verification="Comprobar en el Administrador de dispositivos que el dispositivo opere con estado 'Este dispositivo funciona correctamente' (código 0).",
+    )
+
+
+def _network(result: ComponentResult) -> Recommendation:
+    case = _case(result)
+    prob = (result.possible_problem or "").lower()
+    if case == "C1" or "apipa" in prob:
+        return _apipa(result)
+    if case == "dns" or "dns" in prob:
+        return _dns(result)
+    if "pérdida" in prob or "latencia" in prob:
+        return Recommendation(
+            component=ComponentKind.NETWORK,
+            title="Diagnosticar pérdida de paquetes o degradación de latencia de red",
+            cause=result.possible_problem or "Pérdida de paquetes o latencia anormal detectada en la red local/externa.",
+            steps=(
+                "Comprobar el cable Ethernet o verificar si la señal Wi-Fi presenta atenuación o interferencias.",
+                "Comprobar si hay aplicaciones realizando descargas masivas o saturando el ancho de banda.",
+                "Reiniciar el módem/enrutador de la red local.",
+                "Verificar con el proveedor de Internet (ISP) la estabilidad del enlace si el fallo es persistente.",
+            ),
+            rationale=(
+                "La pérdida sostenida de paquetes deteriora la comunicación y provoca desconexiones en protocolos orientados a conexión."
+            ),
+            verification="Ejecutar una nueva comprobación de red y verificar 0% de pérdida de paquetes hacia el gateway.",
+        )
+    return _generic(result)
+
+
 def _for_alert(result: ComponentResult) -> Recommendation:
     """Elige el procedimiento que corresponde a un componente con anomalía."""
     case = _case(result)
+    if result.component is ComponentKind.SYSTEM:
+        return _system_events(result)
     if result.component is ComponentKind.CPU:
         return _cpu(result)
     if result.component is ComponentKind.MEMORY:
@@ -322,11 +408,9 @@ def _for_alert(result: ComponentResult) -> Recommendation:
     if result.component is ComponentKind.DISK:
         return _usb_without_volume(result) if case == "USB-SIN-VOLUMEN" else _disk(result)
     if result.component is ComponentKind.NETWORK:
-        if case == "C1" or "APIPA" in (result.possible_problem or ""):
-            return _apipa(result)
-        if case == "DNS" or "DNS" in (result.possible_problem or ""):
-            return _dns(result)
-        return _generic(result)
+        return _network(result)
+    if result.component is ComponentKind.DRIVER:
+        return _driver(result)
     if result.component is ComponentKind.PCI and case == "C2":
         return _pci_nic(result)
     if result.component is ComponentKind.USB and case == "C3":

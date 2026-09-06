@@ -24,6 +24,7 @@ from hardware_admin.diagnostics.thermal import (
     ThermalSnapshotProvider,
     WmiThermalZoneProvider,
 )
+from hardware_admin.diagnostics.windows_events import WindowsEventsProvider
 from hardware_admin.domain.models import (
     ComponentKind,
     ComponentResult,
@@ -31,6 +32,10 @@ from hardware_admin.domain.models import (
     EvidenceRecord,
     HealthStatus,
     Measurement,
+)
+from hardware_admin.infrastructure.commands import (
+    SafeCommandRunner,
+    parse_wlan_signal,
 )
 from hardware_admin.infrastructure.powershell import (
     PowerShellQuery,
@@ -79,9 +84,11 @@ class SystemCollector:
         self,
         runner: SafePowerShellRunner,
         thermal_provider: Any | None = None,
+        events_provider: WindowsEventsProvider | None = None,
     ) -> None:
         self.runner = runner
         self.thermal_provider = thermal_provider
+        self.events_provider = events_provider or WindowsEventsProvider(runner=self.runner)
 
     def collect(self) -> ComponentResult:
         uname = platform.uname()
@@ -306,6 +313,41 @@ class SystemCollector:
             except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
                 facts["Sensores térmicos del equipo"] = f"Error al consultar telemetría: {exc}"
 
+        # 6. Eventos críticos recientes de Windows (Fase F4)
+        events, ev_status, ev_problem, ev_ok = self.events_provider.get_recent_events(window_days=7)
+        facts["Ventana de eventos"] = "7 días"
+        facts["Límite de evidencia"] = "La ausencia de eventos no certifica salud física"
+        facts["Eventos críticos recientes (7 días)"] = len(events)
+        facts["Diagnóstico de eventos"] = ev_problem or "Sin eventos críticos registrados en los últimos 7 días"
+        if events:
+            facts["Eventos de Windows (7 días)"] = [
+                {
+                    "Timestamp": e.timestamp,
+                    "Id": e.event_id,
+                    "Nivel": e.level,
+                    "Proveedor": e.provider,
+                    "Categoría": e.category,
+                    "Mensaje": e.message,
+                }
+                for e in events
+            ]
+            if any(e.is_kernel_power_41 for e in events):
+                facts["Advertencia de energía"] = "reinicio inesperado detectado, causa no determinada (Event ID 41)"
+            if any(e.category == "WHEA" for e in events):
+                facts["Alerta de hardware"] = "Error de arquitectura de hardware WHEA detectado en los registros del sistema."
+
+        system_status = HealthStatus.NORMAL
+        system_problem = None
+        if not ev_ok:
+            system_status = ev_status
+            system_problem = ev_problem
+        elif ev_status == HealthStatus.CRITICAL:
+            system_status = HealthStatus.CRITICAL
+            system_problem = ev_problem
+        elif ev_status == HealthStatus.WARNING:
+            system_status = HealthStatus.WARNING
+            system_problem = ev_problem
+
         output = "\n".join(f"{key}: {value}" for key, value in facts.items())
         evidence = [_evidence("Python/platform", "platform.uname()", output)]
         if result.output or result.error:
@@ -336,6 +378,29 @@ class SystemCollector:
                 )
             )
 
+        if not ev_ok:
+            evidence.append(
+                _evidence(
+                    "Get-WinEvent",
+                    "Get-WinEvent System (WHEA, Kernel-Power, Disk, BugCheck - 7 días)",
+                    ev_problem or "Error al consultar visor de eventos",
+                    False,
+                )
+            )
+        else:
+            ev_summary_text = (
+                f"{len(events)} eventos críticos detectados en la ventana de 7 días. "
+                "La ausencia de eventos no certifica salud física."
+            )
+            evidence.append(
+                _evidence(
+                    "Get-WinEvent",
+                    "Get-WinEvent System (WHEA, Kernel-Power, Disk, BugCheck - 7 días)",
+                    ev_summary_text,
+                    True,
+                )
+            )
+
         if has_system_info and has_firmware_info:
             confidence = ConfidenceLevel.HIGH
         elif has_system_info:
@@ -348,7 +413,8 @@ class SystemCollector:
             "Información del sistema",
             facts,
             summary=f"{facts['Sistema operativo']}",
-            status=HealthStatus.NORMAL,
+            status=system_status,
+            possible_problem=system_problem,
             evidence=tuple(evidence),
             confidence=confidence,
             measurements=tuple(measurements),
@@ -629,13 +695,19 @@ class NetworkCollector:
         self,
         runner: SafePowerShellRunner | None = None,
         connectivity_service: ConnectivityService | None = None,
+        cmd_runner: SafeCommandRunner | None = None,
     ) -> None:
         self.runner = runner or SafePowerShellRunner()
         self.connectivity_service = connectivity_service or ConnectivityService()
+        self.cmd_runner = cmd_runner or SafeCommandRunner()
 
     def collect(self) -> ComponentResult:
         addresses = psutil.net_if_addrs()
         stats = psutil.net_if_stats()
+        try:
+            io_counters = psutil.net_io_counters(pernic=True)
+        except (psutil.Error, OSError):
+            io_counters = {}
 
         ps_result = self.runner.run(PowerShellQuery.NETWORK_CONFIGURATION)
         ps_rows = parse_json_rows(ps_result)
@@ -654,6 +726,7 @@ class NetworkCollector:
                 if getattr(psutil, "AF_LINK", object()) == item.family
             ]
             stat = stats.get(name)
+            io = io_counters.get(name)
             if not ipv4_list and not mac_list:
                 continue
 
@@ -665,18 +738,27 @@ class NetworkCollector:
             gateway_val = conf.get("Gateway") or "No disponible"
             dns_val = conf.get("DNS") or "No disponible"
 
-            adapters.append(
-                {
-                    "Adaptador": name,
-                    "MAC": mac_str or "No disponible",
-                    "IPv4": ", ".join(ipv4_list) if ipv4_list else "Sin IPv4",
-                    "IPv6": ipv6_val,
-                    "Puerta de enlace": gateway_val,
-                    "Servidores DNS": dns_val,
-                    "Estado": "Conectado" if stat and stat.isup else "Desconectado",
-                    "Velocidad": f"{stat.speed} Mbps" if stat and stat.speed else "No disponible",
-                }
-            )
+            adapter_dict: dict[str, Any] = {
+                "Adaptador": name,
+                "MAC": mac_str or "No disponible",
+                "IPv4": ", ".join(ipv4_list) if ipv4_list else "Sin IPv4",
+                "IPv6": ipv6_val,
+                "Puerta de enlace": gateway_val,
+                "Servidores DNS": dns_val,
+                "Estado": "Conectado" if stat and stat.isup else "Desconectado",
+                "Velocidad": f"{stat.speed} Mbps" if stat and stat.speed else "No disponible",
+            }
+            if io:
+                adapter_dict["Bytes enviados"] = format_bytes(io.bytes_sent)
+                adapter_dict["Bytes recibidos"] = format_bytes(io.bytes_recv)
+                adapter_dict["Paquetes enviados"] = io.packets_sent
+                adapter_dict["Paquetes recibidos"] = io.packets_recv
+                adapter_dict["Errores entrada"] = io.errin
+                adapter_dict["Errores salida"] = io.errout
+                adapter_dict["Descartes entrada"] = io.dropin
+                adapter_dict["Descartes salida"] = io.dropout
+
+            adapters.append(adapter_dict)
 
         connected = sum(1 for item in adapters if item["Estado"] == "Conectado")
 
@@ -710,6 +792,35 @@ class NetworkCollector:
             for s in conn_report.stages
         ]
 
+        measurements: list[Measurement] = list(conn_report.measurements)
+
+        # Wi-Fi señal con netsh y shell=False
+        wlan_res = self.cmd_runner.wlan_show_interfaces()
+        wlan_ok, wlan_signal, wlan_detail = parse_wlan_signal(wlan_res.output, wlan_res.exit_code)
+        if wlan_signal is not None:
+            measurements.append(
+                Measurement(
+                    name="Señal Wi-Fi",
+                    value=wlan_signal,
+                    unit="%",
+                    expected_range=(40.0, 100.0),
+                )
+            )
+        wifi_fact: Any = (
+            {
+                "Estado": "Conectado" if wlan_signal is not None else "Desconectado",
+                "Señal": f"{wlan_signal}%" if wlan_signal is not None else "No disponible",
+                "Detalle": wlan_detail,
+            }
+            if wlan_ok
+            else (wlan_detail if wlan_detail.startswith("NOT_SUPPORTED") else f"NOT_SUPPORTED: {wlan_detail}")
+        )
+
+        total_errin = sum(io.errin for io in io_counters.values())
+        total_errout = sum(io.errout for io in io_counters.values())
+        total_dropin = sum(io.dropin for io in io_counters.values())
+        total_dropout = sum(io.dropout for io in io_counters.values())
+
         facts: dict[str, Any] = {
             "Adaptadores": adapters,
             "_adaptadores": [
@@ -725,6 +836,13 @@ class NetworkCollector:
             "Conectividad": stages_fact,
             "Diagnóstico de red": conn_report.problem_title
             or "Conectividad normal y acceso a Internet verificado",
+            "Wi-Fi": wifi_fact,
+            "Estadísticas de red": {
+                "Total errores entrada": total_errin,
+                "Total errores salida": total_errout,
+                "Total descartes entrada": total_dropin,
+                "Total descartes salida": total_dropout,
+            },
         }
         if conn_report.recommendations:
             facts["Recomendaciones"] = list(conn_report.recommendations)
@@ -745,7 +863,7 @@ class NetworkCollector:
         evidence_items = [
             _evidence(
                 "psutil",
-                "psutil.net_if_addrs() / net_if_stats()",
+                "psutil.net_if_addrs() / net_if_stats() / net_io_counters()",
                 "\n".join(
                     f"{a['Adaptador']} | {a['MAC']} | IPv4: {a['IPv4']} | GW: {a['Puerta de enlace']} | Estado: {a['Estado']}"
                     for a in adapters
@@ -774,6 +892,15 @@ class NetworkCollector:
                 conn_report.status == HealthStatus.NORMAL,
             )
         )
+        if wlan_res.output or wlan_res.error:
+            evidence_items.append(
+                _evidence(
+                    "netsh",
+                    "netsh wlan show interfaces",
+                    wlan_res.output or wlan_res.error,
+                    wlan_res.exit_code == 0,
+                )
+            )
 
         return ComponentResult(
             self.component,
@@ -783,6 +910,7 @@ class NetworkCollector:
             status=conn_report.status,
             possible_problem=conn_report.problem_title,
             evidence=tuple(evidence_items),
+            measurements=tuple(measurements),
         )
 
 

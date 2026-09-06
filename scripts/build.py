@@ -44,7 +44,7 @@ def main() -> None:
     run([python, "-m", "pip", "install", "-r", "requirements.lock"])
     run([python, "-m", "pip", "install", "--no-deps", "-e", "."])
     run([python, "scripts/prepare_icon.py"])
-    run([python, "-m", "pytest", "-q"])
+    run([python, "-m", "pytest", "--capture=sys", "-q"])
     run([str(VENV_DIR / "Scripts" / "ruff.exe"), "check", "."])
     # Sin argumentos usa los paquetes del pyproject, que es la puerta real.
     run([str(VENV_DIR / "Scripts" / "mypy.exe")])

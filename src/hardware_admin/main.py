@@ -61,6 +61,11 @@ def main() -> None:
         if app.thermal_window is not None:
             app.thermal_window.destroy()
         app.update_idletasks()
+        app.open_windows_events()
+        app.update_idletasks()
+        if app.windows_events_window is not None:
+            app.windows_events_window.destroy()
+        app.update_idletasks()
         print(app.export_debug_state())
         app.destroy()
         return

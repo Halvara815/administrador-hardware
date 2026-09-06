@@ -10,8 +10,12 @@ from hardware_admin.domain.models import (
     ConnectivityCheckResult,
     ConnectivityStage,
     HealthStatus,
+    Measurement,
 )
-from hardware_admin.infrastructure.commands import SafeCommandRunner
+from hardware_admin.infrastructure.commands import (
+    SafeCommandRunner,
+    parse_ping_latency_and_loss,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -33,6 +37,11 @@ class ConnectivityReport:
     problem_title: str | None
     recommendations: tuple[str, ...]
     is_icmp_blocked: bool = False
+    gateway_latency_ms: float | None = None
+    gateway_packet_loss: float | None = None
+    external_latency_ms: float | None = None
+    external_packet_loss: float | None = None
+    measurements: tuple[Measurement, ...] = ()
 
 
 #: Presupuesto total de las pruebas de red. Cada intento tiene además su
@@ -75,6 +84,7 @@ class ConnectivityService:
         external_target: str = "8.8.8.8",
         dns_domain: str = "google.com",
         budget_seconds: float = DEFAULT_NETWORK_BUDGET_SECONDS,
+        skip_external: bool = False,
     ) -> ConnectivityReport:
         """Realiza la comprobación escalonada completa con timeouts acotados.
 
@@ -99,6 +109,7 @@ class ConnectivityService:
             )
 
         stages: list[ConnectivityCheckResult] = []
+        measurements: list[Measurement] = []
 
         # 1. Escalón: Adaptador físico/lógico
         if not adapter_connected:
@@ -216,19 +227,47 @@ class ConnectivityService:
         gateway_clean = (gateway or "").strip()
         first_gw = gateway_clean.split(",")[0].strip() if gateway_clean else ""
         gw_ok = False
+        gw_lat: float | None = None
+        gw_loss: float | None = None
+
         if first_gw and first_gw != "No disponible":
-            ping_gw = self.runner.ping(first_gw, count=1, timeout_ms=2500, overall_timeout=3.0)
+            ping_gw = self.runner.ping(first_gw, count=2, timeout_ms=2000, overall_timeout=3.0)
             gw_ok = ping_gw.exit_code == 0
+            gw_lat, gw_loss = parse_ping_latency_and_loss(ping_gw.output)
+            if gw_ok and gw_loss is None:
+                gw_loss = 0.0
+
+            if gw_lat is not None:
+                measurements.append(
+                    Measurement(
+                        name="Latencia Gateway",
+                        value=gw_lat,
+                        unit="ms",
+                        expected_range=(0.0, 100.0),
+                    )
+                )
+            if gw_loss is not None:
+                measurements.append(
+                    Measurement(
+                        name="Pérdida Gateway",
+                        value=gw_loss,
+                        unit="%",
+                        expected_range=(0.0, 0.0),
+                    )
+                )
+
+            gw_details = (
+                f"Puerta de enlace ({first_gw}) responde al diagnóstico"
+                + (f" (latencia: {gw_lat:.1f} ms, pérdida: {gw_loss:.0f}%)." if gw_lat is not None else ".")
+                if gw_ok
+                else f"La puerta de enlace ({first_gw}) no respondió a la comprobación."
+            )
             stages.append(
                 ConnectivityCheckResult(
                     stage=ConnectivityStage.GATEWAY,
                     target=first_gw,
                     succeeded=gw_ok,
-                    details=(
-                        f"Puerta de enlace ({first_gw}) responde al diagnóstico."
-                        if gw_ok
-                        else f"La puerta de enlace ({first_gw}) no respondió a la comprobación."
-                    ),
+                    details=gw_details,
                 )
             )
         else:
@@ -241,23 +280,81 @@ class ConnectivityService:
                 )
             )
 
+        # Si se solicita omitir pruebas externas, no degradar una red local sana
+        if skip_external:
+            stages.append(
+                ConnectivityCheckResult(
+                    stage=ConnectivityStage.EXTERNAL_IP,
+                    target=external_target,
+                    succeeded=True,
+                    details="Prueba externa omitida por configuración del usuario (skip_external).",
+                )
+            )
+            stages.append(
+                ConnectivityCheckResult(
+                    stage=ConnectivityStage.DNS,
+                    target=dns_domain,
+                    succeeded=True,
+                    details="Prueba DNS externa omitida por configuración del usuario (skip_external).",
+                )
+            )
+            local_status = HealthStatus.NORMAL if gw_ok else HealthStatus.WARNING
+            local_title = None if gw_ok else "Sin comunicación con la puerta de enlace local"
+            local_recs = () if gw_ok else ("Verificar conexión física o Wi-Fi con el enrutador local.",)
+            return ConnectivityReport(
+                stages=tuple(stages),
+                status=local_status,
+                problem_title=local_title,
+                recommendations=local_recs,
+                is_icmp_blocked=False,
+                gateway_latency_ms=gw_lat,
+                gateway_packet_loss=gw_loss,
+                measurements=tuple(measurements),
+            )
+
         # 4. Escalón: IP Externa de referencia (8.8.8.8)
         if not budget_left():
             stages.append(skipped(ConnectivityStage.EXTERNAL_IP, external_target))
             stages.append(skipped(ConnectivityStage.DNS, dns_domain))
             return self._build_report(stages)
-        ping_ext = self.runner.ping(external_target, count=1, timeout_ms=3000, overall_timeout=4.0)
+
+        ping_ext = self.runner.ping(external_target, count=2, timeout_ms=2500, overall_timeout=4.0)
         ext_ok = ping_ext.exit_code == 0
+        ext_lat, ext_loss = parse_ping_latency_and_loss(ping_ext.output)
+        if ext_ok and ext_loss is None:
+            ext_loss = 0.0
+
+        if ext_lat is not None:
+            measurements.append(
+                Measurement(
+                    name="Latencia Externa",
+                    value=ext_lat,
+                    unit="ms",
+                    expected_range=(0.0, 150.0),
+                )
+            )
+        if ext_loss is not None:
+            measurements.append(
+                Measurement(
+                    name="Pérdida Externa",
+                    value=ext_loss,
+                    unit="%",
+                    expected_range=(0.0, 0.0),
+                )
+            )
+
+        ext_details = (
+            f"Respuesta correcta desde IP externa ({external_target})"
+            + (f" (latencia: {ext_lat:.1f} ms, pérdida: {ext_loss:.0f}%)." if ext_lat is not None else ".")
+            if ext_ok
+            else f"Sin respuesta de IP externa ({external_target})."
+        )
         stages.append(
             ConnectivityCheckResult(
                 stage=ConnectivityStage.EXTERNAL_IP,
                 target=external_target,
                 succeeded=ext_ok,
-                details=(
-                    f"Respuesta correcta desde IP externa de referencia ({external_target})."
-                    if ext_ok
-                    else f"Sin respuesta de IP externa ({external_target})."
-                ),
+                details=ext_details,
             )
         )
 
@@ -265,6 +362,7 @@ class ConnectivityService:
         if not budget_left():
             stages.append(skipped(ConnectivityStage.DNS, dns_domain))
             return self._build_report(stages)
+
         ns_res = self.runner.nslookup(dns_domain, timeout=4.0)
         dns_ok = self._is_dns_resolved(ns_res.output, ns_res.exit_code)
         stages.append(
@@ -288,8 +386,12 @@ class ConnectivityService:
                 stage=ConnectivityStage.EXTERNAL_IP,
                 target=external_target,
                 succeeded=True,
-                details=f"IP externa ({external_target}) no responde al ping (ICMP posiblemente filtrado), pero la navegación y el tráfico DNS funcionan.",
+                details=f"IP externa ({external_target}) no responde al ping (ICMP posiblemente filtrado o bloqueado por cortafuegos), pero la resolución DNS y navegación funcionan. Evidencia limitada de ICMP.",
             )
+
+        recs_list: list[str] = []
+        if (gw_loss is not None and gw_loss > 0) or (ext_loss is not None and ext_loss > 0):
+            recs_list.append("Se detectó pérdida de paquetes en la red. Verificar posibles interferencias Wi-Fi o saturación.")
 
         if not gw_ok and not ext_ok and not dns_ok:
             return ConnectivityReport(
@@ -302,9 +404,14 @@ class ConnectivityService:
                     "Revisar si la dirección IP y máscara corresponden a la misma subred del enrutador.",
                 ),
                 is_icmp_blocked=icmp_blocked,
+                gateway_latency_ms=gw_lat,
+                gateway_packet_loss=gw_loss,
+                external_latency_ms=ext_lat,
+                external_packet_loss=ext_loss,
+                measurements=tuple(measurements),
             )
 
-        if ext_ok and not dns_ok:
+        if (ext_ok or icmp_blocked) and not dns_ok:
             # Caso fallo DNS exclusivo
             return ConnectivityReport(
                 stages=tuple(stages),
@@ -317,9 +424,14 @@ class ConnectivityService:
                     "Sugerencia manual en cmd: ipconfig /flushdns",
                 ),
                 is_icmp_blocked=icmp_blocked,
+                gateway_latency_ms=gw_lat,
+                gateway_packet_loss=gw_loss,
+                external_latency_ms=ext_lat,
+                external_packet_loss=ext_loss,
+                measurements=tuple(measurements),
             )
 
-        if not ext_ok and not dns_ok:
+        if not ext_ok and not dns_ok and gw_ok:
             return ConnectivityReport(
                 stages=tuple(stages),
                 status=HealthStatus.WARNING,
@@ -329,14 +441,30 @@ class ConnectivityService:
                     "Verificar luces indicadoras de Internet/DSL/Fibra en el enrutador principal.",
                 ),
                 is_icmp_blocked=icmp_blocked,
+                gateway_latency_ms=gw_lat,
+                gateway_packet_loss=gw_loss,
+                external_latency_ms=ext_lat,
+                external_packet_loss=ext_loss,
+                measurements=tuple(measurements),
             )
+
+        final_status = HealthStatus.NORMAL
+        if (not icmp_blocked and ext_loss is not None and ext_loss >= 50) or (
+            gw_loss is not None and gw_loss >= 50
+        ):
+            final_status = HealthStatus.WARNING
 
         return ConnectivityReport(
             stages=tuple(stages),
-            status=HealthStatus.NORMAL,
-            problem_title=None,
-            recommendations=(),
+            status=final_status,
+            problem_title=None if final_status == HealthStatus.NORMAL else "Pérdida significativa de paquetes detectada",
+            recommendations=tuple(recs_list),
             is_icmp_blocked=icmp_blocked,
+            gateway_latency_ms=gw_lat,
+            gateway_packet_loss=gw_loss,
+            external_latency_ms=ext_lat,
+            external_packet_loss=ext_loss,
+            measurements=tuple(measurements),
         )
 
     @staticmethod

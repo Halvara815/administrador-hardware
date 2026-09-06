@@ -210,7 +210,7 @@ Estimación: 3–6 horas más validación en hardware diferente.
 
 ## Fase 4: red y eventos críticos de Windows
 
-Estado: **NO INICIADA**.
+Estado: **NEEDS_USER_VERIFICATION** (2026-09-06: Diagnóstico de red escalonado [adaptador -> IP/APIPA -> gateway -> DNS -> Internet], soporte skip_external sin degradar red local sana, latencia y pérdida de paquetes hacia gateway y destino externo, detección de ICMP bloqueado con DNS funcional como evidencia limitada, estadísticas de tráfico, descartes y velocidad por interfaz con psutil, intensidad de señal Wi-Fi con netsh [NOT_SUPPORTED si ausente]. Proveedor de eventos críticos de Windows `WindowsEventsProvider` con consulta `Get-WinEvent` segura [try/catch, -ErrorAction Stop, ventana fija allowlisted de 7 días], manejo de errores de permisos como NOT_SUPPORTED y fallos como ERROR [nunca lista vacía ni NORMAL]. Categorización de eventos [WHEA, DISK_STORAGE, REINICIO_INESPERADO, BSOD, DRIVER], regla estricta de Kernel-Power 41 aislado a lo sumo WARNING y mensaje no causal. Sanitización de privacidad [máximo 500 caracteres, depuración de rutas, usuarios, IPs, MACs, números de serie]. Correlación de controladores exclusivamente por DeviceID/InstanceId normalizado contra PROBLEM_DEVICES [prohibida coincidencia por FriendlyName; antigüedad de fecha nunca recomienda actualización por sí sola]. Ventana gráfica hija `WindowsEventsWindow` en Sistema con descargo legal explícito y tarjetas de eventos. 266 passed, 29 subtests passed, ruff check limpio, mypy sin errores en 37 archivos, build y smoke test de EXE y ZIP validados con hash SHA256).
 
 Objetivo: distinguir adaptador activo, red local funcional y acceso a Internet.
 
@@ -241,7 +241,7 @@ Estimación: 2–4 horas.
 
 ## Fase 5: motor de diagnóstico multimuestreo
 
-Estado: **NO INICIADA**.
+Estado: **ESTRICTAMENTE NO INICIADA**.
 
 Objetivo: reducir falsos positivos y producir recomendaciones útiles.
 

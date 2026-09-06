@@ -32,6 +32,7 @@ class PowerShellQuery(StrEnum):
     PHYSICAL_MEMORY_MODULES = "physical_memory_modules"
     PERIPHERALS_EXTENDED = "peripherals_extended"
     THERMAL_ZONE = "thermal_zone"
+    CRITICAL_EVENTS = "critical_events"
 
 
 @dataclass(frozen=True, slots=True)
@@ -219,6 +220,33 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
     PowerShellQuery.THERMAL_ZONE: """
         $data = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue |
             Select-Object InstanceName, CurrentTemperature, CriticalTripPoint, ThermalStamp)
+    """,
+    PowerShellQuery.CRITICAL_EVENTS: """
+        try {
+            $startTime = (Get-Date).AddDays(-7)
+            $filter = @{
+                LogName = 'System'
+                StartTime = $startTime
+                Level = @(1, 2)
+            }
+            $rawEvents = Get-WinEvent -FilterHashtable $filter -MaxEvents 50 -ErrorAction Stop
+            $events = $rawEvents | Where-Object {
+                $_.ProviderName -match 'WHEA|disk|Ntfs|storahci|storport|Kernel-Power|BugCheck|volmgr|EventLog'
+            } | Select-Object -First 30 @{Name='Timestamp';Expression={$_.TimeCreated.ToString('o')}},
+                @{Name='Id';Expression={$_.Id}},
+                @{Name='Nivel';Expression={$_.LevelDisplayName}},
+                @{Name='Proveedor';Expression={$_.ProviderName}},
+                @{Name='Mensaje';Expression={($_.Message -split "`r?`n")[0].Trim()}}
+            $data = @($events)
+        } catch {
+            $msg = $_.Exception.Message
+            if ($msg -match 'No events were found|No se encontraron eventos') {
+                $data = @()
+            } else {
+                Write-Error "ERROR_GET_WINEVENT: $msg"
+                exit 1
+            }
+        }
     """,
 }
 

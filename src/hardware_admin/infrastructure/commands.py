@@ -176,6 +176,10 @@ class SafeCommandRunner:
         ]
         return self._execute(fixed_args, timeout=timeout)
 
+    def wlan_show_interfaces(self, timeout: float = 5.0) -> NativeCommandResult:
+        """Ejecuta netsh.exe wlan show interfaces para consultar el estado de Wi-Fi."""
+        return self._execute(["netsh.exe", "wlan", "show", "interfaces"], timeout=timeout)
+
 
 _TRUSTED_NVIDIA_SMI_CANDIDATES: tuple[Path, ...] = (
     Path(r"C:\Windows\System32\nvidia-smi.exe"),
@@ -216,4 +220,72 @@ def generate_battery_report(
     return cmd_runner.battery_report(resolved)
 
 
+def parse_ping_latency_and_loss(output: str) -> tuple[float | None, float | None]:
+    """Extrae latencia media (ms) y porcentaje de pérdida de paquetes (%) del output de ping.exe."""
+    if not output:
+        return None, None
 
+    loss_percent: float | None = None
+    loss_match = re.search(r"\((\d+)%\s*(?:loss|perdidos|pérdida)\)", output, re.IGNORECASE)
+    if not loss_match:
+        loss_match = re.search(r"(\d+)%\s*(?:de\s+pérdida|loss|perdidos)", output, re.IGNORECASE)
+    if loss_match:
+        try:
+            loss_percent = float(loss_match.group(1))
+        except (ValueError, TypeError):
+            pass
+
+    latency_ms: float | None = None
+    avg_match = re.search(
+        r"(?:Average|Media|Promedio)\s*=\s*(\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE
+    )
+    if avg_match:
+        try:
+            latency_ms = float(avg_match.group(1))
+        except (ValueError, TypeError):
+            pass
+    elif "tiempo=" in output.lower() or "time=" in output.lower():
+        single_match = re.search(
+            r"(?:tiempo|time)[=<](\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE
+        )
+        if single_match:
+            try:
+                latency_ms = float(single_match.group(1))
+            except (ValueError, TypeError):
+                pass
+
+    return latency_ms, loss_percent
+
+
+def parse_wlan_signal(output: str, exit_code: int = 0) -> tuple[bool, int | None, str]:
+    """Analiza la salida de netsh wlan show interfaces.
+
+    Devuelve: (soportado, porcentaje_señal, detalle).
+    Si el servicio no corre o no hay tarjeta Wi-Fi, devuelve (False, None, 'NOT_SUPPORTED: ...').
+    """
+    if exit_code != 0 or not output:
+        return False, None, "NOT_SUPPORTED: Servicio WLAN inactivo o sin interfaz Wi-Fi disponible"
+
+    lower = output.lower()
+    if (
+        "no se está ejecutando" in lower
+        or "not running" in lower
+        or "no hay ninguna interfaz" in lower
+        or "there is no wireless interface" in lower
+        or "sin interfaz" in lower
+    ):
+        return False, None, "NOT_SUPPORTED: Sin interfaz inalámbrica Wi-Fi o servicio wlansvc inactivo"
+
+    match = re.search(r"(?:Señal|Signal)\s*:\s*(\d+)%", output, re.IGNORECASE)
+    if match:
+        try:
+            val = int(match.group(1))
+            val = max(0, min(100, val))
+            return True, val, f"Señal Wi-Fi: {val}%"
+        except (ValueError, TypeError):
+            pass
+
+    if "desconectado" in lower or "disconnected" in lower:
+        return True, None, "Interfaz Wi-Fi presente pero desconectada"
+
+    return False, None, "NOT_SUPPORTED: No se detectó nivel de señal Wi-Fi"
