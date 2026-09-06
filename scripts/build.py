@@ -44,10 +44,34 @@ def main() -> None:
     run([python, "-m", "pip", "install", "-r", "requirements.lock"])
     run([python, "-m", "pip", "install", "--no-deps", "-e", "."])
     run([python, "scripts/prepare_icon.py"])
+
+    # 1. Normalizar y verificar explícitamente el entorno Tcl/Tk antes de ejecutar pruebas
+    run(
+        [
+            python,
+            "-c",
+            (
+                "import shutil, sys, pathlib, tkinter; "
+                "bp = pathlib.Path(sys.base_prefix) / 'tcl'; "
+                "vp = pathlib.Path(sys.prefix) / 'tcl'; "
+                "shutil.copytree(bp, vp, dirs_exist_ok=True) if bp.exists() and not vp.exists() else None; "
+                "root = tkinter.Tk(); root.destroy(); "
+                "print('Verificación explícita de Tcl/Tk: PASS')"
+            ),
+        ]
+    )
+
     run([python, "-m", "pytest", "--capture=sys", "-q"])
     run([str(VENV_DIR / "Scripts" / "ruff.exe"), "check", "."])
     # Sin argumentos usa los paquetes del pyproject, que es la puerta real.
     run([str(VENV_DIR / "Scripts" / "mypy.exe")])
+
+    # Terminar cualquier proceso residual si estuviera activo para evitar bloqueos de DLL
+    subprocess.run(
+        ["powershell", "-Command", "Stop-Process -Name AdministradorDeHardware -Force -ErrorAction SilentlyContinue"],
+        check=False,
+    )
+
     run(
         [
             python,
@@ -80,6 +104,26 @@ def main() -> None:
     checksum = sha256_of(archive_path)
     checksum_file = archive_path.with_suffix(archive_path.suffix + ".sha256")
     checksum_file.write_text(f"{checksum}  {archive_path.name}\n", encoding="utf-8")
+
+    # 2. Puertas obligatorias de smoke test post-empaquetado:
+    # a) Smoke test directo sobre el ejecutable en dist
+    print("\n> Ejecutando smoke test sobre ejecutable en dist...")
+    run([str(executable), "--smoke-test"])
+
+    # b) Extracción limpia del paquete ZIP y smoke test sobre el ejecutable descomprimido
+    print("\n> Ejecutando smoke test sobre el ejecutable extraído del ZIP de release...")
+    temp_smoke_dir = PROJECT_ROOT / "scratch" / "build_zip_smoke"
+    if temp_smoke_dir.exists():
+        shutil.rmtree(temp_smoke_dir)
+    temp_smoke_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        shutil.unpack_archive(archive_path, temp_smoke_dir)
+        extracted_exe = temp_smoke_dir / distribution.name / executable.name
+        if not extracted_exe.exists():
+            raise FileNotFoundError(f"El ejecutable no existe dentro del paquete ZIP: {extracted_exe}")
+        run([str(extracted_exe), "--smoke-test"])
+    finally:
+        shutil.rmtree(temp_smoke_dir, ignore_errors=True)
 
     print(f"\nEjecutable creado : {executable}")
     print(f"Paquete de entrega: {archive_path}")

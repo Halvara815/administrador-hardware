@@ -10,8 +10,8 @@ from hardware_admin.collectors.core import NetworkCollector, SystemCollector
 from hardware_admin.collectors.drivers import DriverCollector, normalize_device_id
 from hardware_admin.diagnostics.recommendations import build_recommendations
 from hardware_admin.diagnostics.windows_events import (
-    ALLOWED_EVENT_WINDOW_DAYS,
     DEFAULT_EVENT_WINDOW_DAYS,
+    EVENT_WINDOW_DAYS,
     WindowsEventsProvider,
     sanitize_event_message,
 )
@@ -270,6 +270,22 @@ class WindowsCriticalEventsTests(TestCase):
         self.assertLessEqual(len(truncated), 500)
         self.assertTrue(truncated.endswith("..."))
 
+    def test_sanitize_event_message_redacts_ipv6_addresses(self) -> None:
+        raw = (
+            "Conexión bloqueada hacia 2001:0db8:85a3:0000:0000:8a2e:0370:7334 "
+            "y link-local fe80::1ff:fe23:4567:890a y loopback ::1 y comprimida 2001:db8::1 "
+            "a las 14:30:15 en interfaz con MAC 00:11:22:33:44:55."
+        )
+        sanitized = sanitize_event_message(raw)
+        self.assertNotIn("2001:0db8", sanitized)
+        self.assertNotIn("fe80::", sanitized)
+        self.assertNotIn("2001:db8", sanitized)
+        self.assertNotIn("00:11:22:33:44:55", sanitized)
+        self.assertIn("<ip_redactada>", sanitized)
+        self.assertIn("<mac_redactada>", sanitized)
+        # El timestamp debe preservarse
+        self.assertIn("14:30:15", sanitized)
+
     def test_permission_denied_returns_not_supported_never_empty_or_normal(self) -> None:
         mock_runner = MagicMock()
         mock_runner.run.return_value = mock_cmd_result(
@@ -345,9 +361,78 @@ class WindowsCriticalEventsTests(TestCase):
         self.assertEqual(events[0].category, "REINICIO_INESPERADO")
         self.assertTrue(events[0].is_kernel_power_41)
 
-    def test_window_days_allowlist_validation(self) -> None:
-        self.assertEqual(ALLOWED_EVENT_WINDOW_DAYS, (1, 7, 30))
+    def test_kernel_power_with_id_other_than_41_not_treated_as_unexpected_reboot(self) -> None:
+        mock_runner = MagicMock()
+        kp_other_json = (
+            '[{"Id":42,"Timestamp":"2026-09-02T15:30:00Z","Nivel":"Información",'
+            '"Proveedor":"Microsoft-Windows-Kernel-Power","Mensaje":"The system is entering sleep."}]'
+        )
+        mock_runner.run.return_value = mock_cmd_result(kp_other_json, PowerShellQuery.CRITICAL_EVENTS, exit_code=0)
+        provider = WindowsEventsProvider(runner=mock_runner)
+        events, _status, _problem, success = provider.get_recent_events(window_days=7)
+
+        self.assertTrue(success)
+        self.assertEqual(len(events), 1)
+        self.assertFalse(events[0].is_kernel_power_41)
+        self.assertEqual(events[0].category, "KERNEL_POWER")
+        self.assertEqual(events[0].event_id, 42)
+        self.assertNotIn("reinicio inesperado", events[0].message)
+        self.assertIn("The system is entering sleep", events[0].message)
+
+    def test_window_days_is_fixed_to_7_and_rejects_other_values(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = mock_cmd_result("[]", PowerShellQuery.CRITICAL_EVENTS, exit_code=0)
+        provider = WindowsEventsProvider(runner=mock_runner)
+        self.assertEqual(EVENT_WINDOW_DAYS, 7)
         self.assertEqual(DEFAULT_EVENT_WINDOW_DAYS, 7)
+
+        # 7 días es aceptado
+        _events, status, _problem, success = provider.get_recent_events(window_days=7)
+        self.assertTrue(success)
+        self.assertEqual(status, HealthStatus.NORMAL)
+
+        # Cualquier otro valor es rechazado explícitamente con ValueError
+        with self.assertRaises(ValueError):
+            provider.get_recent_events(window_days=1)
+        with self.assertRaises(ValueError):
+            provider.get_recent_events(window_days=30)
+        with self.assertRaises(ValueError):
+            provider.get_recent_events(window_days=14)
+
+    def test_query_failure_sanitizes_error_messages(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = mock_cmd_result(
+            "",
+            PowerShellQuery.CRITICAL_EVENTS,
+            exit_code=1,
+            error="ERROR en C:\\Users\\Administrator\\secret.ps1 hacia 192.168.1.50 con fe80::1",
+        )
+        provider = WindowsEventsProvider(runner=mock_runner)
+        _events, status, problem, success = provider.get_recent_events(window_days=7)
+
+        self.assertFalse(success)
+        self.assertEqual(status, HealthStatus.ERROR)
+        self.assertIsNotNone(problem)
+        self.assertNotIn("Administrator", problem or "")
+        self.assertNotIn("192.168.1.50", problem or "")
+        self.assertNotIn("fe80::1", problem or "")
+        self.assertIn("<usuario>", problem or "")
+        self.assertIn("<ip_redactada>", problem or "")
+
+    def test_malformed_json_output_returns_error_gracefully(self) -> None:
+        mock_runner = MagicMock()
+        mock_runner.run.return_value = mock_cmd_result(
+            "ESTO NO ES UN JSON VALIDO {{{{",
+            PowerShellQuery.CRITICAL_EVENTS,
+            exit_code=0,
+        )
+        provider = WindowsEventsProvider(runner=mock_runner)
+        events, status, problem, success = provider.get_recent_events(window_days=7)
+
+        self.assertFalse(success)
+        self.assertEqual(status, HealthStatus.ERROR)
+        self.assertEqual(events, [])
+        self.assertIn("Salida inválida", problem or "")
 
     def test_system_collector_integrates_events_properly(self) -> None:
         mock_runner = MagicMock()
@@ -630,4 +715,28 @@ class WindowsEventsWindowUITests(TestCase):
             win.destroy()
         finally:
             root.destroy()
+
+
+class LoggingResilienceTests(TestCase):
+    """Pruebas de tolerancia a fallos en la configuración de logging (F4)."""
+
+    def test_configure_logging_handles_permission_error_and_oserror_gracefully(self) -> None:
+        from unittest.mock import patch
+
+        from hardware_admin.infrastructure.logging_setup import configure_logging
+
+        # 1. Fallo por PermissionError al crear directorio de logs
+        with patch("pathlib.Path.mkdir", side_effect=PermissionError("Acceso denegado a logs")):
+            log_path = configure_logging()
+            self.assertIsNotNone(log_path)
+            self.assertTrue(str(log_path).endswith("app.log"))
+
+        # 2. Fallo por OSError / PermissionError al instanciar RotatingFileHandler
+        with patch(
+            "hardware_admin.infrastructure.logging_setup.RotatingFileHandler",
+            side_effect=PermissionError("app.log bloqueado"),
+        ):
+            log_path = configure_logging()
+            self.assertIsNotNone(log_path)
+            self.assertTrue(str(log_path).endswith("app.log"))
 

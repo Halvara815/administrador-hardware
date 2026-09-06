@@ -12,16 +12,16 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
 - Implementación: recolectores para sistema/CPU/RAM/red/E/S, almacenamiento,
   PnP USB/PCI/dispositivos con problema, GPU/monitor y drivers; servicios de
   escaneo, conectividad y monitorización; reportes HTML/JSON/TXT.
-- Calidad ejecutada en este entorno (Fases F1, F2, F3 y F4 completadas con verificación humana pendiente): `pytest --capture=sys -q` = **266 passed, 29 subtests passed** (total: 266 pruebas evaluadas);
+- Calidad ejecutada en este entorno (Fases F1, F2, F3 y F4 completadas con verificación humana pendiente): `pytest --capture=sys -q` = **271 passed, 29 subtests passed** (total: 271 pruebas evaluadas);
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 37 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `284b71593de75bd5ea952301196ce9ca62244c2ce880ebd2a4ce0bb90e12e68b`
-  - Fecha de compilación (EXE): `2026-09-05T20:35:43-06:00`
+  - SHA-256 (EXE): `523ee0dee5a77a30e131526a5247632797aa8dedc1ccf12ae2178a3af08ab011`
+  - Fecha de compilación (EXE): `2026-09-05T20:57:15-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `aaaeb2172524f5ca63ffcd6db90b6d163bbfa802e55e8b8834fd6fbc08855338`
+  - SHA-256 (ZIP): `57db1f6d189b54f0633a89f91f16c01294c69d6722ea8447e074fd41d3400730`
   - Intérprete de empaquetado: CPython 3.12.14 Windows x86_64 con Tcl/Tk 8.6.12 completo (`tcl86t.dll`, `tk86t.dll`, `_tkinter.pyd`).
-  - Nota de auditoría: Los builds previos generados bajo Python 3.14 quedan **INVALIDADOS** debido a que carecían de binarios Tcl/Tk funcionales (`ModuleNotFoundError: No module named 'tkinter'`). El nuevo build ha sido validado mediante `--smoke-test` (apertura y cierre de ventana principal, ventana hija de sensores térmicos y ventana hija de eventos de Windows) tanto en el EXE de `dist` como en el EXE extraído del ZIP.
+  - Nota de auditoría: Los builds previos generados bajo Python 3.14 quedan **INVALIDADOS** debido a que carecían de binarios Tcl/Tk funcionales (`ModuleNotFoundError: No module named 'tkinter'`). El nuevo build ha sido validado mediante doble `--smoke-test` obligatorio (apertura y cierre de ventana principal, ventana hija de sensores térmicos y ventana hija de eventos de Windows) tanto en el EXE de `dist` como en el EXE extraído del ZIP.
 - Entrega observada: existe EXE y ZIP de release; CI Windows y `pip-audit` están
   configurados. No se ejecutó en esta revisión el pipeline remoto, el
   protocolo PR-01…PR-18 ni la prueba del EXE en una segunda máquina.
@@ -76,7 +76,7 @@ de GPU, rendimiento por aplicación, refresco, SSD y priorizador de actualizacio
 
 ## Inconclusos o discrepancias encontrados
 
-1. pytest ejecuta 266 passed y 29 subtests passed (total: 266 pruebas evaluadas). La persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
+1. pytest ejecuta 271 passed y 29 subtests passed (total: 271 pruebas evaluadas). La persistencia de caché presenta PytestCacheWarning / WinError 183 en este entorno cuando no se especifica directorio alterno. Se registra como NOT_RUN_ENV_LIMITATION y no afecta los resultados funcionales.
 2. Los empaquetados anteriores generados bajo Python 3.14 quedan marcados como INVALIDADOS debido a la ausencia de Tcl/Tk. El nuevo empaquetado bajo CPython 3.12.14 contiene la distribución completa de Tcl/Tk y supera el smoke test tanto en `dist` como en el ZIP.
 3. `README.md` aún describía exportación HTML como si fuese la única; se corrige
    en esta actualización para reflejar JSON/TXT ya implementados.

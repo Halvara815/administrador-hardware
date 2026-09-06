@@ -229,10 +229,10 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
                 StartTime = $startTime
                 Level = @(1, 2)
             }
-            $rawEvents = Get-WinEvent -FilterHashtable $filter -MaxEvents 50 -ErrorAction Stop
+            $rawEvents = Get-WinEvent -FilterHashtable $filter -MaxEvents 300 -ErrorAction Stop
             $events = $rawEvents | Where-Object {
                 $_.ProviderName -match 'WHEA|disk|Ntfs|storahci|storport|Kernel-Power|BugCheck|volmgr|EventLog'
-            } | Select-Object -First 30 @{Name='Timestamp';Expression={$_.TimeCreated.ToString('o')}},
+            } | Select-Object -First 50 @{Name='Timestamp';Expression={$_.TimeCreated.ToString('o')}},
                 @{Name='Id';Expression={$_.Id}},
                 @{Name='Nivel';Expression={$_.LevelDisplayName}},
                 @{Name='Proveedor';Expression={$_.ProviderName}},

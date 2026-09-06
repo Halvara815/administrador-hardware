@@ -6,11 +6,13 @@ con ventana cerrada de 7 días y sanitización estricta de privacidad.
 
 from __future__ import annotations
 
+import ipaddress
 import logging
 import re
 
 from hardware_admin.domain.models import HealthStatus, WindowsCriticalEvent
 from hardware_admin.infrastructure.powershell import (
+    MalformedQueryOutput,
     PowerShellQuery,
     SafePowerShellRunner,
     parse_json_rows,
@@ -18,9 +20,9 @@ from hardware_admin.infrastructure.powershell import (
 
 LOGGER = logging.getLogger(__name__)
 
-#: Ventana temporal canónica de evaluación de eventos.
-ALLOWED_EVENT_WINDOW_DAYS: tuple[int, ...] = (1, 7, 30)
-DEFAULT_EVENT_WINDOW_DAYS: int = 7
+#: Ventana temporal canónica de evaluación de eventos (fija de 7 días).
+EVENT_WINDOW_DAYS: int = 7
+DEFAULT_EVENT_WINDOW_DAYS: int = EVENT_WINDOW_DAYS
 
 #: Patrones para redactar datos confidenciales y personales en los mensajes de eventos.
 _PATH_REGEX = re.compile(r"[a-zA-Z]:\\[^ \t\r\n\"';<>|]+", re.IGNORECASE)
@@ -33,10 +35,13 @@ _MAC_REGEX = re.compile(r"(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}")
 _SERIAL_REGEX = re.compile(
     r"(?:S/N|Serial(?:Number)?|Serie)\s*[:=]\s*[A-Za-z0-9\-]+", re.IGNORECASE
 )
+_IPV6_CANDIDATE_REGEX = re.compile(
+    r"\b(?:[0-9a-fA-F]{1,4}:|:)(?:[0-9a-fA-F]{0,4}:){1,7}[0-9a-fA-F]{0,4}\b|::1\b"
+)
 
 
 def sanitize_event_message(raw_msg: str | None, max_chars: int = 500) -> str:
-    """Sanea mensajes de eventos eliminando datos personales, rutas, IP y seriales.
+    """Sanea mensajes de eventos eliminando datos personales, rutas, IP (IPv4 e IPv6) y seriales.
 
     Trunca la salida a un máximo de `max_chars` caracteres conservando el resumen útil.
     """
@@ -50,6 +55,18 @@ def sanitize_event_message(raw_msg: str | None, max_chars: int = 500) -> str:
     text = _IPV4_REGEX.sub("<ip_redactada>", text)
     text = _MAC_REGEX.sub("<mac_redactada>", text)
     text = _SERIAL_REGEX.sub("<serial_redactado>", text)
+
+    def _replace_ipv6(m: re.Match[str]) -> str:
+        tok = m.group(0).strip(".,;:()[]\"'")
+        if tok and tok != ":":
+            try:
+                ipaddress.IPv6Address(tok)
+                return "<ip_redactada>"
+            except ValueError:
+                pass
+        return m.group(0)
+
+    text = _IPV6_CANDIDATE_REGEX.sub(_replace_ipv6, text)
 
     # Eliminar saltos de línea redundantes
     text = " ".join(text.split())
@@ -66,17 +83,18 @@ class WindowsEventsProvider:
         self.runner = runner or SafePowerShellRunner()
 
     def get_recent_events(
-        self, window_days: int = DEFAULT_EVENT_WINDOW_DAYS
+        self, window_days: int = EVENT_WINDOW_DAYS
     ) -> tuple[list[WindowsCriticalEvent], HealthStatus, str | None, bool]:
-        """Consulta eventos críticos de los últimos `window_days` días.
+        """Consulta eventos críticos de los últimos `window_days` días (fijo: 7 días).
 
         Devuelve: (eventos_saneados, estado, posible_problema, consulta_exitosa).
         Si la consulta falla por permisos o error, devuelve ERROR o NOT_SUPPORTED,
         NUNCA lista vacía ni estado NORMAL.
         """
-        effective_days = (
-            window_days if window_days in ALLOWED_EVENT_WINDOW_DAYS else DEFAULT_EVENT_WINDOW_DAYS
-        )
+        if window_days != EVENT_WINDOW_DAYS:
+            raise ValueError(
+                f"La ventana de eventos de Windows es fija de {EVENT_WINDOW_DAYS} días; no se permiten otros valores."
+            )
 
         result = self.runner.run(PowerShellQuery.CRITICAL_EVENTS)
         if result.exit_code != 0:
@@ -88,21 +106,32 @@ class WindowsEventsProvider:
                 or "unauthorized" in err_lower
             )
             status = HealthStatus.NOT_SUPPORTED if is_perm else HealthStatus.ERROR
+            sanitized_err = sanitize_event_message(result.error.strip() or "Error de consulta")
             error_detail = (
                 "Permisos insuficientes para acceder al visor de eventos de Windows (Get-WinEvent); "
                 "la consulta no pudo completarse y no certifica salud física"
                 if is_perm
-                else f"Fallo al consultar eventos críticos de Windows: {result.error.strip() or 'Error de consulta'}"
+                else f"Fallo al consultar eventos críticos de Windows: {sanitized_err}"
             )
             return [], status, error_detail, False
 
-        rows = parse_json_rows(result)
+        try:
+            rows = parse_json_rows(result)
+        except (MalformedQueryOutput, ValueError, TypeError, KeyError) as exc:
+            sanitized_err = sanitize_event_message(str(exc))
+            return (
+                [],
+                HealthStatus.ERROR,
+                f"Salida inválida al consultar eventos críticos de Windows: {sanitized_err}",
+                False,
+            )
+
         if not rows:
             return (
                 [],
                 HealthStatus.NORMAL,
                 (
-                    f"Sin eventos críticos registrados en la ventana de {effective_days} días; "
+                    f"Sin eventos críticos registrados en la ventana de {EVENT_WINDOW_DAYS} días; "
                     "la ausencia de eventos no certifica salud física"
                 ),
                 True,
@@ -122,11 +151,16 @@ class WindowsEventsProvider:
             raw_msg = str(row.get("Mensaje") or "")
 
             prov_lower = provider.lower()
-            is_kp41 = event_id == 41 or "kernel-power" in prov_lower
+            is_kernel_power = "kernel-power" in prov_lower
+            is_kp41 = event_id == 41 and is_kernel_power
 
             if is_kp41:
                 category = "REINICIO_INESPERADO"
                 sanitized_msg = "reinicio inesperado detectado, causa no determinada (Event ID 41)"
+            elif is_kernel_power:
+                category = "KERNEL_POWER"
+                only_kp41 = False
+                sanitized_msg = sanitize_event_message(raw_msg)
             elif "whea" in prov_lower:
                 category = "WHEA"
                 has_whea = True

@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 from hardware_admin.app_factory import build_scan_service
@@ -68,7 +69,7 @@ def main() -> None:
         app.update_idletasks()
         print(app.export_debug_state())
         app.destroy()
-        return
+        sys.exit(0)
     app.mainloop()
 
 

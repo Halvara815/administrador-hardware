@@ -314,7 +314,15 @@ class SystemCollector:
                 facts["Sensores térmicos del equipo"] = f"Error al consultar telemetría: {exc}"
 
         # 6. Eventos críticos recientes de Windows (Fase F4)
-        events, ev_status, ev_problem, ev_ok = self.events_provider.get_recent_events(window_days=7)
+        try:
+            events, ev_status, ev_problem, ev_ok = self.events_provider.get_recent_events(window_days=7)
+        except (OSError, ValueError, RuntimeError, TypeError, KeyError) as exc:
+            events, ev_status, ev_problem, ev_ok = (
+                [],
+                HealthStatus.ERROR,
+                f"Error al consultar eventos de Windows: {exc}",
+                False,
+            )
         facts["Ventana de eventos"] = "7 días"
         facts["Límite de evidencia"] = "La ausencia de eventos no certifica salud física"
         facts["Eventos críticos recientes (7 días)"] = len(events)
