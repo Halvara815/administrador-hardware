@@ -52,6 +52,20 @@ def main() -> None:
         _headless_scan(args.export_report)
         return
 
+    if args.smoke_test:
+        # Antes de construir nada: un recurso ausente o corrupto revienta la
+        # cabecera con FileNotFoundError y el usuario ve un traceback en vez de
+        # la ventana. Comprobarlo aquí convierte ese fallo en un error claro.
+        from hardware_admin.resources import verify_ui_assets
+
+        problems = verify_ui_assets()
+        if problems:
+            print("ERROR: recursos gráficos no utilizables:", file=sys.stderr)
+            for problem in problems:
+                print(f"  - {problem}", file=sys.stderr)
+            sys.exit(1)
+        print("Verificación de recursos gráficos: PASS")
+
     from hardware_admin.ui.main_window import HardwareAdminApp
 
     app = HardwareAdminApp(build_scan_service())

@@ -36,6 +36,29 @@ def run(command: list[str]) -> None:
     subprocess.run(command, cwd=PROJECT_ROOT, check=True)
 
 
+def verify_assets(distribution: Path, label: str) -> None:
+    """Abre cada recurso grafico del paquete y comprueba que es una imagen valida.
+
+    Un usuario recibio FileNotFoundError desde PIL.Image.open al abrir el
+    ejecutable: el recurso no habia llegado al paquete y ninguna puerta lo
+    detectaba. Comprobar solo la existencia tampoco bastaria, porque un archivo
+    truncado existe y falla igual al abrirlo.
+    """
+    from PIL import Image, UnidentifiedImageError
+
+    required = ("app-icon.png", "app-icon.ico")
+    for name in required:
+        path = distribution / "_internal" / "assets" / name
+        if not path.exists():
+            raise FileNotFoundError(f"Falta recurso grafico en {label}: {path}")
+        try:
+            with Image.open(path) as image:
+                image.verify()
+        except (OSError, UnidentifiedImageError) as exc:
+            raise RuntimeError(f"Recurso grafico ilegible en {label}: {path} ({exc})") from exc
+    print(f"> Verificación de recursos gráficos en {label}: {', '.join(required)} legibles.")
+
+
 def main() -> None:
     if not VENV_PYTHON.exists():
         run([sys.executable, "-m", "venv", str(VENV_DIR)])
@@ -98,6 +121,10 @@ def main() -> None:
         raise FileNotFoundError(f"Falta archivo crítico Tk en la distribución: {tk_init}")
     print("> Verificación de recursos Tcl/Tk en paquete dist: init.tcl y tk.tcl presentes.")
 
+    # Los recursos graficos se abren de verdad, no solo se comprueba que existan:
+    # un archivo truncado existe y aun asi revienta la cabecera en el arranque.
+    verify_assets(distribution, "dist")
+
     for source_name, target_name in DISTRIBUTION_DOCS:
         source = PROJECT_ROOT / source_name
         if not source.exists():
@@ -142,6 +169,8 @@ def main() -> None:
         if not extracted_tk_init.exists():
             raise FileNotFoundError(f"Falta archivo crítico Tk en el ZIP extraído: {extracted_tk_init}")
         print("> Verificación de recursos Tcl/Tk en paquete ZIP extraído: init.tcl y tk.tcl presentes.")
+
+        verify_assets(unzipped_dist, "ZIP extraído")
 
         run([str(extracted_exe), "--smoke-test"])
     finally:
