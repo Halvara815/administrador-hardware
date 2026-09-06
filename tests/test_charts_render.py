@@ -189,3 +189,60 @@ class ActionSectionTests(TestCase):
 
         self.assertTrue(self.app.workspace.winfo_ismapped())
         self.assertFalse(self.app.action_view.winfo_ismapped())
+
+
+@skipUnless(TK, "Requiere una sesión gráfica para crear ventanas Tk")
+class DeferredCallbackTests(TestCase):
+    """Regresion: un callback de `after` no debe ejecutarse tras destruir la ventana.
+
+    `EvidenceWindow` programa `state('zoomed')` a 10 ms y `focus` a 20 ms. Si la
+    ventana se cierra antes —lo que hace el smoke test al abrir y destruir cada
+    ventana hija— esos callbacks disparaban contra un widget inexistente y Tcl
+    emitia un error de "after" script. El codigo de salida seguia siendo 0, de
+    modo que el fallo quedaba tolerado sin que nadie lo viera.
+    """
+
+    def setUp(self) -> None:
+        import customtkinter as ctk
+
+        self.root = ctk.CTk()
+        self.root.geometry("400x300")
+        self.errores: list[str] = []
+        # Tk enruta las excepciones de callback aqui en lugar de propagarlas.
+        self.root.report_callback_exception = (  # type: ignore[method-assign]
+            lambda exc, val, tb: self.errores.append(f"{exc.__name__}: {val}")
+        )
+
+    def tearDown(self) -> None:
+        import tkinter
+
+        # La ventana puede haberse destruido ya dentro de la prueba.
+        try:
+            self.root.destroy()
+        except tkinter.TclError:
+            pass
+
+    def _pump(self, milliseconds: int) -> None:
+        """Deja correr el bucle de eventos para que venzan los `after` pendientes."""
+        import time
+
+        limite = time.monotonic() + milliseconds / 1000
+        while time.monotonic() < limite:
+            self.root.update_idletasks()
+            self.root.update()
+            time.sleep(0.005)
+
+    def test_closing_the_evidence_window_immediately_raises_no_callback_error(self) -> None:
+        import customtkinter as ctk
+
+        from hardware_admin.ui.icons import render
+        from hardware_admin.ui.main_window import EvidenceWindow
+
+        icono = ctk.CTkImage(render("expand", 16, "#FFFFFF"), size=(16, 16))
+        ventana = EvidenceWindow(self.root, "TITULO", "cuerpo", icono)
+        ventana.destroy()
+
+        # Los callbacks estaban programados a 10 y 20 ms: hay que superarlos.
+        self._pump(200)
+
+        self.assertEqual(self.errores, [], f"callbacks tras destruir: {self.errores}")

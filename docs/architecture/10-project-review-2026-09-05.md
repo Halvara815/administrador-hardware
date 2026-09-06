@@ -16,10 +16,10 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
   `ruff check .` = **All checks passed!**; `mypy src` = **Success: no issues found in 37 source files**;
   build PyInstaller y smoke test del ejecutable = **PASS** (`{"has_report": false, "matrix_rows": 11, "navigation_items": 16, "selected": "system"}`).
   - Binario: `dist/AdministradorDeHardware/AdministradorDeHardware.exe`
-  - SHA-256 (EXE): `2cdbdeb5e09a10f863caf414306b6f1556e641836e709b2b1ce7df46c64bafbb`
-  - Fecha de compilación (EXE): `2026-09-05T22:08:08-06:00`
+  - SHA-256 (EXE): `aee39cac202590d908ec8b24ca7d6562d943b84421897b3d2ad767b039d817c2`
+  - Fecha de compilación (EXE): `2026-09-05T23:17:14-06:00`
   - Paquete de entrega: `release/AdministradorDeHardware-v0.1.0-windows-x64.zip`
-  - SHA-256 (ZIP): `50ef078bca72964249cd02ce4a2119655cc3ffb68597c0e83828699e9de90172`
+  - SHA-256 (ZIP): `a28f6818a1b5655823bf46fb9631e53f93d434ec6f237b462178d46b0bf20842`
   - Intérprete de empaquetado: CPython 3.12.10 Windows x86_64 con Tcl/Tk 8.6.15 completo (`tcl86t.dll`, `tk86t.dll`, `_tkinter.pyd`), verificado con `tkinter.Tk()` antes de compilar.
   - Nota de auditoría: los builds previos bajo Python 3.14 quedan **INVALIDADOS**
     por carecer de binarios Tcl/Tk funcionales, y los hashes que este documento
@@ -33,6 +33,30 @@ dispositivos físicos, rendimiento real ni un equipo Windows limpio distinto.
     colapsaba todas al directorio raíz, destruyendo los subdirectorios que Tcl
     necesita. Ahora las tuplas canónicas `(dest, src, typecode)` se añaden a
     `a.datas` sin alterar el destino.
+  - Fallo de arranque de Tcl bajo pytest, diagnosticado el 2026-09-05: la
+    captura por defecto de pytest (`--capture=fd`) sustituye los descriptores
+    0/1/2 del proceso. Tcl los necesita al inicializar un intérprete y falla al
+    leer `init.tcl` con «couldn't read file: No error», pese a existir y ser
+    legible. El fallo dependía del orden de las pruebas, de modo que aparecía
+    de forma intermitente y con distinto test afectado en cada ejecución.
+    Medición: `--capture=fd` produjo 0, 1, 2, 6 y 7 fallos en ejecuciones
+    sucesivas; `--capture=sys` dio 272 passed en 4 de 4. El proyecto fija
+    `addopts = "--capture=sys"` en `pyproject.toml`, con la razón documentada.
+    No se omite ninguna prueba: las 272 se ejecutan.
+  - Carrera de «after script» corregida: `EvidenceWindow` programaba
+    `state('zoomed')` y `focus` a 10 y 20 ms, y la ventana principal reprograma
+    el refresco de monitorización y el sondeo del worker. Al destruirse antes
+    de que vencieran, Tcl emitía un error de callback que el código de salida 0
+    ocultaba. Cada ventana cancela ahora únicamente sus propios
+    identificadores. Un primer intento canceló la lista completa del intérprete
+    (`after info`) y regresó la suite a 6-7 fallos por alcanzar callbacks de
+    otras ventanas vivas; queda descartado. Verificación: 6 de 6 ejecuciones
+    del `--smoke-test` con código 0 y **stderr vacío**.
+  - Diagnóstico reproducible de solo lectura: `scripts/diagnose_tcltk.py`
+    imprime intérprete, prefijos, variables Tcl/Tk, archivos de librería con la
+    versión que exigen, las DLL candidatas en orden de búsqueda y el resultado
+    de `tkinter.Tk()`. No modifica nada. Debe ejecutarse y conservarse su
+    salida antes de build, pytest y smoke test.
   - Validación del nuevo build: doble `--smoke-test` con código de salida 0
     —apertura y cierre de la ventana principal, de la ventana de sensores
     térmicos y de la de eventos de Windows— tanto en el EXE de `dist` como en el

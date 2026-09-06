@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import threading
+import tkinter as tk
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -558,6 +559,32 @@ class MatrixTable(ctk.CTkFrame):
             row.update_result(result)
 
 
+def cancel_after_jobs(widget: Any, jobs: list[str]) -> int:
+    """Cancela los `after` que programó este widget y vacía la lista.
+
+    Tk no descarta los callbacks programados cuando se destruye su widget: al
+    vencer intentan ejecutarse contra un objeto inexistente y Tcl emite un error
+    de «after script». El proceso acaba con código 0 igualmente, así que el
+    fallo pasa inadvertido.
+
+    Se cancelan únicamente los identificadores propios. Cancelar la lista
+    completa del intérprete (`after info`) alcanzaría también a los callbacks de
+    otras ventanas vivas y de CustomTkinter, y rompe más de lo que arregla.
+
+    Devuelve cuántos se cancelaron, para poder comprobarlo en las pruebas.
+    """
+    cancelled = 0
+    for job in jobs:
+        try:
+            widget.after_cancel(job)
+            cancelled += 1
+        except tk.TclError:
+            # Ya vencido o cancelado: no hay nada que deshacer.
+            continue
+    jobs.clear()
+    return cancelled
+
+
 class EvidenceWindow(ctk.CTkToplevel):
     """Evidencia tecnica a pantalla completa, para leer salidas largas sin recortes."""
 
@@ -632,8 +659,19 @@ class EvidenceWindow(ctk.CTkToplevel):
         self.transient(master)
         # `zoomed` llena la pantalla conservando los botones de ventana; el modo
         # fullscreen puro los oculta y deja al usuario sin salida visible.
-        self.after(10, lambda: self.state("zoomed"))
-        self.after(20, self.focus)
+        self._after_jobs: list[str] = [
+            self.after(10, lambda: self.state("zoomed")),
+            self.after(20, self.focus),
+        ]
+
+    def destroy(self) -> None:
+        """Cancela lo propio antes de desaparecer.
+
+        Esta ventana programa `state('zoomed')` a 10 ms y `focus` a 20 ms; si se
+        cierra antes —como hace el smoke test— vencerían sobre un widget muerto.
+        """
+        cancel_after_jobs(self, self._after_jobs)
+        super().destroy()
 
     def update_content(self, heading: str, body: str) -> None:
         self.heading.configure(text=heading)
@@ -892,6 +930,7 @@ class HardwareAdminApp(ctk.CTk):
             sampler=PsutilRateSampler()
         )
         self.monitoring_job: str | None = None
+        self.worker_poll_job: str | None = None
         self.report: DiagnosticReport | None = None
         self.selected_component = ComponentKind.SYSTEM
         self.scan_running = False
@@ -1419,6 +1458,18 @@ class HardwareAdminApp(ctk.CTk):
         self.monitoring_service.stop()
         self.destroy()
 
+    def destroy(self) -> None:
+        """Cierra cancelando el refresco de monitorización y el sondeo del worker.
+
+        Ambos se reprograman solos con `after`, así que sin cancelarlos vencería
+        al menos uno después de que la ventana deje de existir.
+        """
+        propios = [job for job in (self.monitoring_job, self.worker_poll_job) if job]
+        cancel_after_jobs(self, propios)
+        self.monitoring_job = None
+        self.worker_poll_job = None
+        super().destroy()
+
     def _build_diagnostic_column(self, master: Any) -> None:
         left = ctk.CTkFrame(master, fg_color="transparent")
         left.grid(row=0, column=0, sticky="nsew", padx=(0, 16))
@@ -1812,7 +1863,7 @@ class HardwareAdminApp(ctk.CTk):
             target=self._run_scan, args=(only,), name="hardware-scan", daemon=True
         )
         worker.start()
-        self.after(40, self._poll_worker_events)
+        self.worker_poll_job = self.after(40, self._poll_worker_events)
 
     def scan_selected_component(self) -> None:
         self.start_scan(self.selected_component)
@@ -1848,7 +1899,7 @@ class HardwareAdminApp(ctk.CTk):
         except Empty:
             pass
         if self.scan_running or not self.worker_events.empty():
-            self.after(40, self._poll_worker_events)
+            self.worker_poll_job = self.after(40, self._poll_worker_events)
 
     def _merged_report(self) -> DiagnosticReport:
         """Reporte con todo lo analizado hasta ahora, sea parcial o completo."""
