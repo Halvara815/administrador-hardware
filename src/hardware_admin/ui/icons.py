@@ -111,7 +111,7 @@ def _paint_usb(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -
     _line(draw, size, ((0.40, 0.60), (0.60, 0.60)), color, width)
 
 
-def _paint_card(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+def _paint_pci(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
     _rect(draw, size, (0.08, 0.22, 0.92, 0.68), color, width, 0.06)
     _line(draw, size, ((0.20, 0.36), (0.62, 0.36)), color, width)
     _line(draw, size, ((0.20, 0.52), (0.50, 0.52)), color, width)
@@ -171,7 +171,7 @@ def _paint_copy(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) 
     _rect(draw, size, (0.38, 0.38, 0.90, 0.90), color, width, 0.08)
 
 
-def _paint_card(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+def _paint_note(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
     _rect(draw, size, (0.10, 0.18, 0.90, 0.84), color, width, 0.10)
     _line(draw, size, ((0.24, 0.36), (0.72, 0.36)), color, width)
     _line(draw, size, ((0.24, 0.54), (0.62, 0.54)), color, width)
@@ -275,14 +275,14 @@ _PAINTERS: dict[str, IconPainter] = {
     "disk": _paint_disk,
     "network": _paint_globe,
     "usb": _paint_usb,
-    "pci": _paint_card,
+    "pci": _paint_pci,
     "driver": _paint_gear,
     "problem_device": _paint_alert,
     "monitor_gpu": _paint_monitor,
     "io": _paint_pulse,
     "report": _paint_document,
     "copy": _paint_copy,
-    "card": _paint_card,
+    "card": _paint_note,
     "save": _paint_save,
     "check": _paint_check,
     "info": _paint_info,

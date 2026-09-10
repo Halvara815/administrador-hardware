@@ -1682,8 +1682,6 @@ class HardwareAdminApp(ctk.CTk):
             self.export_report()
         elif action == "advanced":
             self.show_advanced()
-        elif action == "exit":
-            self._on_close()
 
     def _show_action_view(self, action: str, title: str, body: str) -> None:
         """Presenta un apartado que no es un componente."""
@@ -1721,11 +1719,9 @@ class HardwareAdminApp(ctk.CTk):
         percent = max(0, int(battery.percent))
         if battery.power_plugged:
             status_text = "Cargando" if percent < 100 else "Conectada"
-            detail = "Conectada a la corriente"
             eta = "Conectada" if percent >= 100 else self._format_battery_eta(battery.secsleft)
         else:
             status_text = "Descargando" if percent < 100 else "En espera"
-            detail = "Sin alimentación"
             eta = self._format_battery_eta(battery.secsleft)
 
         if percent <= 10:
@@ -1748,8 +1744,10 @@ class HardwareAdminApp(ctk.CTk):
             f"Autonomía estimada: {eta}",
             f"Estado de salud: {STATUS_LABELS[health_status]}",
             "",
-            "Diagnóstico de batería en tiempo real: el valor se actualiza cada 10 segundos "
-            "mientras esta vista esté abierta.",
+            (
+                "Diagnóstico de batería en tiempo real: el valor se actualiza cada 10 segundos "
+                "mientras esta vista esté abierta."
+            ),
             "",
             "Funciones del modo avanzado:",
             "- Ver el estado inmediato de la batería.",

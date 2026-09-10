@@ -1,9 +1,9 @@
 """Paleta centralizada inspirada en la maqueta aprobada."""
 
 from hardware_admin.domain.models import ComponentKind, HealthStatus
-FONT_FAMILY = "Aptos"
-DATA_FONT_FAMILY = "Aptos Display"
-LABEL_LETTER_SPACING = "  "
+
+FONT_FAMILY = "Segoe UI"
+DATA_FONT_FAMILY = "Segoe UI"
 
 BACKGROUND = "#0A1523"
 SURFACE = "#0D1C2C"

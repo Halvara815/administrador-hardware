@@ -13,7 +13,12 @@ from hardware_admin.domain.models import (
     HealthStatus,
     Recommendation,
 )
-from hardware_admin.reports.json_report import SCHEMA_VERSION, build_payload, export_json
+from hardware_admin.reports.json_report import (
+    SCHEMA_VERSION,
+    _redact,
+    build_payload,
+    export_json,
+)
 
 
 def sample_report() -> DiagnosticReport:
@@ -116,7 +121,107 @@ class JsonPrivacyTests(TestCase):
         self.assertNotEqual(payload["equipo"], "(omitido)")
 
 
+    def test_redact_removes_personal_data_and_keeps_markers(self) -> None:
+        raw = (
+            r"Ruta Windows C:\Users\Alice\app.log y C:/Users/Alice/data, "
+            "MAC 3C-52-82-1A-BB-04, IP 192.168.1.77"
+        )
+        redacted = _redact(raw)
+
+        self.assertNotIn("Alice", redacted)
+        self.assertNotIn("3C-52-82-1A-BB-04", redacted)
+        self.assertNotIn("192.168.1.77", redacted)
+        self.assertIn(r"C:\Users\<usuario>", redacted)
+        self.assertIn("C:/Users/<usuario>", redacted)
+        self.assertIn("[MAC-redacted]", redacted)
+        self.assertIn("[IP-redacted]", redacted)
+
+    def test_payload_preserves_technical_facts_when_include_identity_true(self) -> None:
+        net_result = ComponentResult(
+            component=ComponentKind.NETWORK,
+            name="Red",
+            facts={
+                "Adaptadores": [
+                    {
+                        "Adaptador": "Wi-Fi",
+                        "MAC": "3C-52-82-1A-BB-04",
+                        "IPv4": "192.168.1.77",
+                        "Puerta de enlace": "192.168.1.1",
+                        "Servidores DNS": "1.1.1.1, 8.8.8.8",
+                        "Máscara de subred": "255.255.255.0",
+                    }
+                ],
+                "Versión de firmware": "1.0.0.1",
+            },
+            summary="1 conectado",
+            status=HealthStatus.NORMAL,
+        )
+        report = DiagnosticReport(
+            started_at=datetime(2026, 9, 5, 10, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 9, 5, 10, 1, tzinfo=UTC),
+            results=(net_result,),
+            conclusion="Conexión establecida.",
+        )
+        payload = build_payload(report, include_identity=True)
+        adapter = payload["resultados"][0]["datos"]["Adaptadores"][0]
+
+        self.assertEqual(adapter["MAC"], "3C-52-82-1A-BB-04")
+        self.assertEqual(adapter["IPv4"], "192.168.1.77")
+        self.assertEqual(adapter["Puerta de enlace"], "192.168.1.1")
+        self.assertEqual(adapter["Servidores DNS"], "1.1.1.1, 8.8.8.8")
+        self.assertEqual(adapter["Máscara de subred"], "255.255.255.0")
+        self.assertEqual(payload["resultados"][0]["datos"]["Versión de firmware"], "1.0.0.1")
+
+    def test_payload_redacts_identity_facts_but_preserves_mask_and_firmware_when_include_identity_false(self) -> None:
+        net_result = ComponentResult(
+            component=ComponentKind.NETWORK,
+            name="Red",
+            facts={
+                "Adaptadores": [
+                    {
+                        "Adaptador": "Wi-Fi",
+                        "MAC": "3C-52-82-1A-BB-04",
+                        "IPv4": "192.168.1.77",
+                        "Puerta de enlace": "192.168.1.1",
+                        "Servidores DNS": "1.1.1.1, 8.8.8.8",
+                        "Máscara de subred": "255.255.255.0",
+                    }
+                ],
+                "Versión de firmware": "1.0.0.1",
+                "Ruta": r"C:\Users\Alice\AppData\Local\log.txt",
+            },
+            summary="1 conectado",
+            status=HealthStatus.NORMAL,
+        )
+        report = DiagnosticReport(
+            started_at=datetime(2026, 9, 5, 10, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 9, 5, 10, 1, tzinfo=UTC),
+            results=(net_result,),
+            conclusion="Conexión establecida.",
+        )
+        payload = build_payload(report, include_identity=False)
+        datos = payload["resultados"][0]["datos"]
+        adapter = datos["Adaptadores"][0]
+
+        self.assertEqual(adapter["MAC"], "[MAC-redacted]")
+        self.assertEqual(adapter["IPv4"], "[IP-redacted]")
+        self.assertEqual(adapter["Puerta de enlace"], "[IP-redacted]")
+        self.assertEqual(adapter["Servidores DNS"], "[IP-redacted], [IP-redacted]")
+        self.assertEqual(adapter["Máscara de subred"], "255.255.255.0")
+        self.assertEqual(datos["Versión de firmware"], "1.0.0.1")
+        self.assertIn(r"C:\Users\<usuario>", datos["Ruta"])
+        self.assertNotIn("Alice", datos["Ruta"])
+
+
 class JsonExportTests(TestCase):
+    def test_json_export_does_not_raise_re_error(self) -> None:
+        report = sample_report()
+        with TemporaryDirectory() as directory:
+            path = export_json(report, f"{directory}/export.json")
+            self.assertTrue(path.exists())
+            content = path.read_text(encoding="utf-8")
+            self.assertIn("CPU", content)
+
     def test_the_file_is_written_as_utf8_and_parses_back(self) -> None:
         with TemporaryDirectory() as directory:
             path = export_json(sample_report(), f"{directory}/reporte.json")
