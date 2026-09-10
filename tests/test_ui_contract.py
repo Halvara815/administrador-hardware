@@ -20,8 +20,8 @@ from hardware_admin.ui.main_window import (
 
 
 class UiContractTests(TestCase):
-    def test_navigation_contains_the_fifteen_options_and_exit(self) -> None:
-        """El enunciado pide 15 apartados mas Salir, en ese orden."""
+    def test_navigation_contains_the_fifteen_options_and_advanced(self) -> None:
+        """El enunciado pide 15 apartados mas Avanzado, en ese orden."""
         labels = [entry.label for entry in NAV_ITEMS]
 
         self.assertEqual(len(NAV_ITEMS), 16)
@@ -31,7 +31,7 @@ class UiContractTests(TestCase):
         self.assertEqual(labels[12], "13. Recomendaciones")
         self.assertEqual(labels[13], "14. Generar reporte")
         self.assertEqual(labels[14], "15. Exportar diagnóstico")
-        self.assertEqual(labels[15], "0. Salir")
+        self.assertEqual(labels[15], "0. Avanzado")
 
     def test_every_component_still_has_its_own_section(self) -> None:
         """Ningun apartado de componente se pierde al reordenar el menu."""
@@ -41,12 +41,12 @@ class UiContractTests(TestCase):
         self.assertEqual(len(components), len(set(components)))
 
     def test_entries_without_component_declare_an_action(self) -> None:
-        """Conectividad, Recomendaciones, Reporte, Exportar y Salir no son componentes."""
+        """Conectividad, Recomendaciones, Reporte, Exportar y Avanzado no son componentes."""
         actions = [entry.action for entry in NAV_ITEMS if entry.component is None]
 
         self.assertEqual(
             actions,
-            ["connectivity", "recommendations", "report", "export", "exit"],
+            ["connectivity", "recommendations", "report", "export", "advanced"],
         )
 
     def test_no_entry_declares_both_a_component_and_an_action(self) -> None:

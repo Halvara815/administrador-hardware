@@ -12,6 +12,7 @@ from __future__ import annotations
 import getpass
 import json
 import platform
+import re
 import socket
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,9 +29,26 @@ SCHEMA_VERSION = "1.0"
 OMITTED = "(omitido)"
 
 
+def _redact(value: str | None) -> str:
+    if value is None:
+        return "No disponible"
+    text = str(value)
+    patterns = [
+        (r"(?i)\\Users\\[^\\]+", "\\Users\\<usuario>"),
+        (r"(?i)C:/Users/[^/]+", "C:/Users/<usuario>"),
+        (r"(?i)C:\\Users\\[^\\]+", "C:\\Users\\<usuario>"),
+        (r"(?i)hostname|computername", "[redacted]"),
+        (r"(?i)\\b[A-Fa-f0-9]{2}(-[A-Fa-f0-9]{2}){5}\b", "[MAC-redacted]"),
+        (r"(?i)\\b(?:\d{1,3}\.){3}\d{1,3}\b", "[IP-redacted]"),
+    ]
+    for pattern, replacement in patterns:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
 def _machine() -> str:
     try:
-        return socket.gethostname()
+        return _redact(socket.gethostname())
     except OSError:
         return "No disponible"
 
@@ -39,14 +57,26 @@ def _user() -> str:
     # getpass consulta variables de entorno y el registro de usuarios: puede
     # fallar en sesiones de servicio o sin perfil, y eso no es un error grave.
     try:
-        return getpass.getuser()
+        return _redact(getpass.getuser())
     except (OSError, KeyError, ImportError):
         return "No disponible"
 
 
 def _public_facts(facts: dict[str, Any]) -> dict[str, Any]:
     """Descarta las series con guion bajo: existen para dibujar, no para exportar."""
-    return {key: value for key, value in facts.items() if not str(key).startswith("_")}
+    redacted: dict[str, Any] = {}
+    for key, value in facts.items():
+        if str(key).startswith("_"):
+            continue
+        if isinstance(value, str):
+            redacted[key] = _redact(value)
+        elif isinstance(value, list):
+            redacted[key] = [
+                _redact(item) if isinstance(item, str) else item for item in value
+            ]
+        else:
+            redacted[key] = value
+    return redacted
 
 
 def build_payload(
