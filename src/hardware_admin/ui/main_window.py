@@ -15,6 +15,7 @@ from tkinter import filedialog, messagebox
 from typing import Any
 
 import customtkinter as ctk
+import psutil
 from PIL import Image
 
 from hardware_admin.collectors.core import format_bytes
@@ -90,7 +91,7 @@ NAV_ITEMS: tuple[NavEntry, ...] = (
     NavEntry("info", "13. Recomendaciones", action="recommendations"),
     NavEntry("report", "14. Generar reporte", action="report"),
     NavEntry("save", "15. Exportar diagnóstico", action="export"),
-    NavEntry("exit", "0. Salir", action="exit"),
+    NavEntry("advanced", "0. Avanzado", action="advanced"),
 )
 
 #: Nombre corto de cada sección, usado en el botón de análisis independiente.
@@ -349,14 +350,14 @@ class StatusCard(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text=title,
-            font=ctk.CTkFont(size=15),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=15),
             text_color=theme.TEXT,
             anchor="w",
         ).grid(row=0, column=1, sticky="sw", padx=(0, 14), pady=(17, 0))
         self.value_label = ctk.CTkLabel(
             self,
             text="--",
-            font=ctk.CTkFont(size=27, weight="bold"),
+            font=ctk.CTkFont(family=theme.DATA_FONT_FAMILY, size=32, weight="bold"),
             text_color=theme.TEXT,
             anchor="w",
         )
@@ -364,7 +365,7 @@ class StatusCard(ctk.CTkFrame):
         self.status_label = ctk.CTkLabel(
             self,
             text="● Sin analizar",
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
             text_color=theme.MUTED,
             anchor="w",
         )
@@ -519,16 +520,16 @@ class EvidenceWindow(ctk.CTkToplevel):
         bar.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(
             bar,
-            text="  EVIDENCIA TÉCNICA",
+            text="  E V I D E N C I A   T É C N I C A",
             image=expand_icon,
             compound="left",
-            font=ctk.CTkFont(size=15, weight="bold"),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
             text_color=theme.ACCENT_TEXT,
         ).grid(row=0, column=0, sticky="w")
         self.heading = ctk.CTkLabel(
             bar,
             text=heading,
-            font=ctk.CTkFont(size=12),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
             text_color=theme.MUTED,
             anchor="w",
             width=1,
@@ -603,6 +604,7 @@ class HardwareAdminApp(ctk.CTk):
             sampler=PsutilRateSampler()
         )
         self.monitoring_job: str | None = None
+        self.advanced_refresh_job: str | None = None
         self.report: DiagnosticReport | None = None
         self.selected_component = ComponentKind.SYSTEM
         self.scan_running = False
@@ -617,7 +619,8 @@ class HardwareAdminApp(ctk.CTk):
         self.evidence_window: EvidenceWindow | None = None
         self.icons = IconCache()
         self.nav_font = ctk.CTkFont(size=13)
-        self.nav_font_selected = ctk.CTkFont(size=13, weight="bold")
+        self.nav_font = ctk.CTkFont(family=theme.FONT_FAMILY, size=13)
+        self.nav_font_selected = ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold")
 
         self.title("Administrador de Hardware")
         icon_path = resource_path("assets", "app-icon.ico")
@@ -664,13 +667,13 @@ class HardwareAdminApp(ctk.CTk):
         ctk.CTkLabel(
             header,
             text="ADMINISTRADOR DE HARDWARE",
-            font=ctk.CTkFont(size=25, weight="bold"),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=25, weight="bold"),
             text_color=theme.TEXT,
         ).grid(row=0, column=1, sticky="sw", pady=(20, 0))
         ctk.CTkLabel(
             header,
-            text="Diagnóstico y estado del equipo",
-            font=ctk.CTkFont(size=14),
+            text="DIAGNÓSTICO Y ESTADO DEL EQUIPO",
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=14, weight="bold"),
             text_color=theme.MUTED,
         ).grid(row=1, column=1, sticky="nw", pady=(2, 0))
 
@@ -679,13 +682,18 @@ class HardwareAdminApp(ctk.CTk):
         self.status_icon = ctk.CTkLabel(self.status_pill, text="")
         self.status_icon.grid(row=0, column=0, padx=(13, 8), pady=8)
         self.global_status = ctk.CTkLabel(
-            self.status_pill, text="Sin analizar", font=ctk.CTkFont(size=13, weight="bold")
+            self.status_pill,
+            text="Sin analizar",
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
         )
         self.global_status.grid(row=0, column=1, padx=(0, 15), pady=8)
         self._set_global_status("idle", "Sin analizar")
 
         self.last_scan_label = ctk.CTkLabel(
-            header, text="Último análisis: —", text_color=theme.MUTED, font=ctk.CTkFont(size=11)
+            header,
+            text="Último análisis: —",
+            text_color=theme.MUTED,
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=11),
         )
         self.last_scan_label.grid(row=1, column=2, padx=(12, 27), pady=(2, 0), sticky="ne")
 
@@ -715,8 +723,8 @@ class HardwareAdminApp(ctk.CTk):
 
         ctk.CTkLabel(
             sidebar,
-            text="OPCIONES",
-            font=ctk.CTkFont(size=13, weight="bold"),
+            text="O P C I O N E S",
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=12),
             text_color=theme.ACCENT_TEXT,
         ).grid(row=0, column=0, sticky="w", padx=22, pady=(18, 10))
 
@@ -791,8 +799,12 @@ class HardwareAdminApp(ctk.CTk):
             font=ctk.CTkFont(size=15, weight="bold"),
             fg_color=theme.ACCENT,
             hover_color=theme.ACCENT_HOVER,
+            border_width=1,
+            border_color=theme.ACCENT_TEXT,
         )
         self.scan_button.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 16))
+        self.scan_button.bind("<Enter>", self._primary_button_enter)
+        self.scan_button.bind("<Leave>", self._primary_button_leave)
 
     def _build_content(self, master: Any) -> None:
         content = ctk.CTkFrame(master, corner_radius=0, fg_color=theme.BACKGROUND)
@@ -806,7 +818,7 @@ class HardwareAdminApp(ctk.CTk):
         self.section_title = ctk.CTkLabel(
             title_row,
             text="DIAGNÓSTICO GENERAL",
-            font=ctk.CTkFont(size=19, weight="bold"),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=19, weight="bold"),
             text_color=theme.TEXT,
         )
         self.section_title.grid(row=0, column=0, sticky="w")
@@ -822,7 +834,7 @@ class HardwareAdminApp(ctk.CTk):
             command=self.scan_selected_component,
             height=34,
             width=208,
-            corner_radius=8,
+            corner_radius=10,
             font=ctk.CTkFont(size=12, weight="bold"),
             fg_color=theme.SURFACE_ALT,
             hover_color=theme.SURFACE_HOVER,
@@ -831,6 +843,8 @@ class HardwareAdminApp(ctk.CTk):
             text_color=theme.ACCENT_TEXT,
         )
         self.section_button.grid(row=0, column=2, sticky="e")
+        self.section_button.bind("<Enter>", self._primary_button_enter)
+        self.section_button.bind("<Leave>", self._primary_button_leave)
 
         cards_frame = ctk.CTkFrame(content, fg_color="transparent")
         cards_frame.grid(row=1, column=0, sticky="ew", pady=(0, 18))
@@ -852,6 +866,14 @@ class HardwareAdminApp(ctk.CTk):
             )
             card.grid(row=0, column=column, sticky="nsew", padx=(0 if column == 0 else 7, 7))
             self.cards[kind] = card
+
+        self.battery_card = StatusCard(
+            cards_frame,
+            "Batería",
+            self.icons.get("card", 26, theme.BATTERY_COLOR),
+            theme.BATTERY_ICON_BACKGROUND,
+        )
+        self.battery_card.grid(row=0, column=4, sticky="nsew", padx=(7, 0))
 
         workspace = ctk.CTkFrame(content, fg_color="transparent")
         self.workspace = workspace
@@ -1073,9 +1095,15 @@ class HardwareAdminApp(ctk.CTk):
             text=f"{state} · {len(samples)}/{self.monitoring_service.capacity} muestras · 1 s"
         )
 
+    def _cancel_advanced_refresh(self) -> None:
+        if self.advanced_refresh_job is not None:
+            self.after_cancel(self.advanced_refresh_job)
+            self.advanced_refresh_job = None
+
     def _on_close(self) -> None:
         """Detiene el muestreo antes de cerrar para no dejar el hilo colgado."""
         self.monitoring_service.stop()
+        self._cancel_advanced_refresh()
         self.destroy()
 
     def _build_diagnostic_column(self, master: Any) -> None:
@@ -1087,7 +1115,7 @@ class HardwareAdminApp(ctk.CTk):
         ctk.CTkLabel(
             left,
             text="MATRIZ DE DIAGNÓSTICO",
-            font=ctk.CTkFont(size=16, weight="bold"),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=15, weight="bold"),
             text_color=theme.TEXT,
         ).grid(row=0, column=0, sticky="w", pady=(0, 10))
 
@@ -1116,7 +1144,7 @@ class HardwareAdminApp(ctk.CTk):
         ctk.CTkLabel(
             conclusion,
             text="CONCLUSIÓN DEL DIAGNÓSTICO",
-            font=ctk.CTkFont(size=14, weight="bold"),
+            font=ctk.CTkFont(family=theme.FONT_FAMILY, size=13, weight="bold"),
             text_color=theme.ACCENT_TEXT,
         ).grid(row=0, column=1, sticky="sw", pady=(16, 4))
         self.conclusion_label = ctk.CTkLabel(
@@ -1139,8 +1167,11 @@ class HardwareAdminApp(ctk.CTk):
             width=190,
             corner_radius=8,
             font=ctk.CTkFont(size=12, weight="bold"),
-            fg_color=theme.SURFACE_HOVER,
-            hover_color=theme.ACCENT,
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
         ).grid(row=2, column=1, sticky="e", padx=(0, 16), pady=(10, 16))
 
     def _build_evidence_console(self, master: Any) -> None:
@@ -1190,8 +1221,11 @@ class HardwareAdminApp(ctk.CTk):
             height=30,
             corner_radius=8,
             font=ctk.CTkFont(size=12),
-            fg_color=theme.SURFACE_HOVER,
-            hover_color=theme.ACCENT,
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
             command=self.copy_evidence,
         ).grid(row=0, column=3, sticky="e")
 
@@ -1255,11 +1289,14 @@ class HardwareAdminApp(ctk.CTk):
             self.show_report()
         elif action == "export":
             self.export_report()
+        elif action == "advanced":
+            self.show_advanced()
         elif action == "exit":
             self._on_close()
 
     def _show_action_view(self, action: str, title: str, body: str) -> None:
         """Presenta un apartado que no es un componente."""
+        self._cancel_advanced_refresh()
         self._highlight_nav(action)
         self.section_title.configure(text=title)
         self.monitoring_panel.grid_remove()
@@ -1271,6 +1308,88 @@ class HardwareAdminApp(ctk.CTk):
         self.action_text.delete("1.0", "end")
         self.action_text.insert("1.0", body)
         self.action_text.configure(state="disabled")
+
+    @staticmethod
+    def _format_battery_eta(seconds: float | None) -> str:
+        if seconds is None or seconds <= 0:
+            return "Autonomía desconocida"
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        if hours > 0:
+            return f"~{hours} h {minutes} min"
+        return f"~{minutes} min"
+
+    def _read_battery_summary(self) -> tuple[str, str, str, HealthStatus]:
+        try:
+            battery = psutil.sensors_battery()
+        except (AttributeError, OSError, RuntimeError):
+            return "No aplica", "No aplica", "Sin sensor de batería en este equipo.", HealthStatus.UNKNOWN
+        if battery is None:
+            return "No aplica", "Sin batería", "No aplica", HealthStatus.UNKNOWN
+
+        percent = max(0, int(battery.percent))
+        if battery.power_plugged:
+            status_text = "Cargando" if percent < 100 else "Conectada"
+            detail = "Conectada a la corriente"
+            eta = "Conectada" if percent >= 100 else self._format_battery_eta(battery.secsleft)
+        else:
+            status_text = "Descargando" if percent < 100 else "En espera"
+            detail = "Sin alimentación"
+            eta = self._format_battery_eta(battery.secsleft)
+
+        if percent <= 10:
+            health_status = HealthStatus.CRITICAL
+        elif percent <= 20:
+            health_status = HealthStatus.WARNING
+        else:
+            health_status = HealthStatus.NORMAL
+        return f"{percent}%", status_text, eta if eta else "Autonomía desconocida", health_status
+
+    def show_advanced(self) -> None:
+        self._cancel_advanced_refresh()
+        battery_percent, state, eta, health_status = self._read_battery_summary()
+        lines = [
+            "AVANZADO",
+            "========",
+            "",
+            f"Batería: {battery_percent}",
+            f"Estado: {state}",
+            f"Autonomía estimada: {eta}",
+            f"Estado de salud: {STATUS_LABELS[health_status]}",
+            "",
+            "Diagnóstico de batería en tiempo real: el valor se actualiza cada 10 segundos "
+            "mientras esta vista esté abierta.",
+            "",
+            "Funciones del modo avanzado:",
+            "- Ver el estado inmediato de la batería.",
+            "- Generar un reporte HTML de batería al elegir una ruta de destino.",
+            "- Mantener cierres ordenados sin cancelar tareas globales del resto de la app.",
+        ]
+        self._show_action_view("advanced", "AVANZADO", "\n".join(lines))
+        self.advanced_refresh_job = self.after(10000, self._refresh_advanced_view)
+
+    def _refresh_advanced_view(self) -> None:
+        if self.active_nav_key != "advanced":
+            self._cancel_advanced_refresh()
+            return
+        battery_percent, state, eta, _ = self._read_battery_summary()
+        text = "\n".join(
+            [
+                "AVANZADO",
+                "========",
+                "",
+                f"Batería: {battery_percent}",
+                f"Estado: {state}",
+                f"Autonomía estimada: {eta}",
+                "",
+                "Actualización en tiempo real activa.",
+            ]
+        )
+        self.action_text.configure(state="normal")
+        self.action_text.delete("1.0", "end")
+        self.action_text.insert("1.0", text)
+        self.action_text.configure(state="disabled")
+        self.advanced_refresh_job = self.after(10000, self._refresh_advanced_view)
 
     def show_report(self) -> None:
         """Vista del reporte completo. No guarda nada: eso es «Exportar»."""
@@ -1449,12 +1568,44 @@ class HardwareAdminApp(ctk.CTk):
                 panel.grid_remove()
         self._show_selected_evidence()
 
+    def _primary_button_enter(self, event: Any) -> None:
+        button = event.widget
+        button.configure(border_width=2, border_color=theme.ACCENT_TEXT)
+
+    def _primary_button_leave(self, event: Any) -> None:
+        button = event.widget
+        border_color = theme.ACCENT_TEXT if button is self.scan_button else theme.BORDER
+        button.configure(border_width=1, border_color=border_color)
+
+    def _animate_refresh_icon(self, frame: int = 0) -> None:
+        """Gira brevemente los iconos de análisis al comenzar una comprobación."""
+        buttons = (
+            (self.scan_button, 20, "#FFFFFF"),
+            (self.section_button, 16, theme.ACCENT_TEXT),
+        )
+        images: list[ctk.CTkImage] = []
+        angle = frame * 45
+        for button, size, color in buttons:
+            image = icons.render("refresh", size, color).rotate(
+                angle, resample=Image.Resampling.BICUBIC
+            )
+            ctk_image = ctk.CTkImage(light_image=image, dark_image=image, size=(size, size))
+            images.append(ctk_image)
+            button.configure(image=ctk_image)
+        self._refresh_animation_images = images
+        if frame < 8:
+            self.after(45, lambda: self._animate_refresh_icon(frame + 1))
+        else:
+            self.scan_button.configure(image=self.icons.get("refresh", 20, "#FFFFFF"))
+            self.section_button.configure(image=self.icons.get("refresh", 16, theme.ACCENT_TEXT))
+
     def start_scan(self, only: ComponentKind | None = None) -> None:
         """Analiza el equipo completo, o sólo `only` si se indica un componente."""
         if self.scan_running:
             return
         self.scan_running = True
         self.scan_scope = only
+        self._animate_refresh_icon()
         self.scan_button.configure(text="ANALIZANDO...", state="disabled")
         self.section_button.configure(state="disabled")
         self.symptom_entry.configure(state="disabled")
@@ -1583,6 +1734,13 @@ class HardwareAdminApp(ctk.CTk):
             if kind is ComponentKind.NETWORK and result.status is HealthStatus.NORMAL:
                 label = "Conectada"
             card.update_result(self._card_value(result), result.status, label)
+
+        battery_percent, battery_state, eta, battery_health = self._read_battery_summary()
+        self.battery_card.update_result(
+            battery_percent,
+            battery_health,
+            f"{battery_state} · {eta}",
+        )
 
     @staticmethod
     def _card_value(result: ComponentResult) -> str:
