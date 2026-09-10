@@ -171,6 +171,13 @@ def _paint_copy(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) 
     _rect(draw, size, (0.38, 0.38, 0.90, 0.90), color, width, 0.08)
 
 
+def _paint_card(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
+    _rect(draw, size, (0.10, 0.18, 0.90, 0.84), color, width, 0.10)
+    _line(draw, size, ((0.24, 0.36), (0.72, 0.36)), color, width)
+    _line(draw, size, ((0.24, 0.54), (0.62, 0.54)), color, width)
+    _line(draw, size, ((0.24, 0.70), (0.52, 0.70)), color, width)
+
+
 def _paint_save(draw: ImageDraw.ImageDraw, size: float, color: str, width: int) -> None:
     _rect(draw, size, (0.10, 0.10, 0.90, 0.90), color, width, 0.08)
     _rect(draw, size, (0.32, 0.10, 0.68, 0.38), color, width)
@@ -275,6 +282,7 @@ _PAINTERS: dict[str, IconPainter] = {
     "io": _paint_pulse,
     "report": _paint_document,
     "copy": _paint_copy,
+    "card": _paint_card,
     "save": _paint_save,
     "check": _paint_check,
     "info": _paint_info,
@@ -283,6 +291,7 @@ _PAINTERS: dict[str, IconPainter] = {
     "collapse": _paint_collapse,
     "lock": _paint_lock,
     "exit": _paint_exit,
+    "advanced": _paint_info,
 }
 
 

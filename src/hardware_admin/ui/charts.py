@@ -258,7 +258,7 @@ class GaugeChart(_ChartFrame):
             )
         self.canvas.create_text(
             self.size / 2, self.size / 2, text=f"{percent:.0f}%",
-            fill=theme.TEXT, font=("Segoe UI", 20, "bold"),
+            fill=theme.TEXT, font=(theme.DATA_FONT_FAMILY, 24, "bold"),
         )
 
 
@@ -304,7 +304,7 @@ class BarListChart(_ChartFrame):
             self.canvas.configure(height=self.ROW_HEIGHT)
             self.canvas.create_text(
                 10, self.ROW_HEIGHT / 2, anchor="w", text="Sin datos disponibles",
-                fill=theme.MUTED, font=("Segoe UI", 10),
+                fill=theme.MUTED, font=(theme.FONT_FAMILY, 10),
             )
             return
 
@@ -343,5 +343,5 @@ class BarListChart(_ChartFrame):
                 )
             self.canvas.create_text(
                 total_width, (top + bottom) / 2, anchor="e", text=bar.value,
-                fill=theme.TEXT, font=("Segoe UI", 10),
+                fill=theme.TEXT, font=(theme.FONT_FAMILY, 10),
             )
