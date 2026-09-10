@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
+import webbrowser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -845,6 +847,26 @@ class HardwareAdminApp(ctk.CTk):
         self.section_button.grid(row=0, column=2, sticky="e")
         self.section_button.bind("<Enter>", self._primary_button_enter)
         self.section_button.bind("<Leave>", self._primary_button_leave)
+        self.driver_update_button = ctk.CTkButton(
+            title_row,
+            text="ACTUALIZAR CONTROLADORES",
+            image=self.icons.get("refresh", 16, "#FFFFFF"),
+            compound="left",
+            height=34,
+            width=220,
+            corner_radius=10,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+            border_width=1,
+            border_color=theme.ACCENT_TEXT,
+            text_color="#FFFFFF",
+            command=self.open_windows_update,
+        )
+        self.driver_update_button.grid(row=0, column=3, sticky="e", padx=(8, 0))
+        self.driver_update_button.grid_remove()
+        self.driver_update_button.bind("<Enter>", self._primary_button_enter)
+        self.driver_update_button.bind("<Leave>", self._primary_button_leave)
 
         cards_frame = ctk.CTkFrame(content, fg_color="transparent")
         cards_frame.grid(row=1, column=0, sticky="ew", pady=(0, 18))
@@ -1553,6 +1575,10 @@ class HardwareAdminApp(ctk.CTk):
         self.workspace.grid()
         self.matrix.select(component)
         self.section_button.configure(text=f"Analizar {SECTION_NAMES[component]}")
+        if component is ComponentKind.DRIVER:
+            self.driver_update_button.grid()
+        else:
+            self.driver_update_button.grid_remove()
         # Un unico hueco en la fila 3: el panel en vivo en E/S, y el de
         # graficos del apartado en CPU, RAM, discos y red.
         if component is ComponentKind.IO:
@@ -1574,7 +1600,11 @@ class HardwareAdminApp(ctk.CTk):
 
     def _primary_button_leave(self, event: Any) -> None:
         button = event.widget
-        border_color = theme.ACCENT_TEXT if button is self.scan_button else theme.BORDER
+        border_color = (
+            theme.ACCENT_TEXT
+            if button is self.scan_button or button is self.driver_update_button
+            else theme.BORDER
+        )
         button.configure(border_width=1, border_color=border_color)
 
     def _animate_refresh_icon(self, frame: int = 0) -> None:
@@ -1608,6 +1638,7 @@ class HardwareAdminApp(ctk.CTk):
         self._animate_refresh_icon()
         self.scan_button.configure(text="ANALIZANDO...", state="disabled")
         self.section_button.configure(state="disabled")
+        self.driver_update_button.configure(state="disabled")
         self.symptom_entry.configure(state="disabled")
         self._set_global_status("busy", "Analizando")
         self.progress_label.configure(text="Iniciando comprobaciones...")
@@ -1672,6 +1703,7 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.driver_update_button.configure(state="normal")
         self.symptom_entry.configure(state="normal")
 
         checks = len(report.results)
@@ -1720,10 +1752,29 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.driver_update_button.configure(state="normal")
         self.symptom_entry.configure(state="normal")
         self._set_global_status("error", "Error")
         self.progress_label.configure(text="El análisis no pudo completarse")
         messagebox.showerror("Error de análisis", f"No fue posible completar el análisis:\n{error}")
+
+    def open_windows_update(self) -> None:
+        """Abre el flujo oficial y seguro de Windows Update."""
+        update_uri = "ms-settings:windowsupdate"
+        try:
+            startfile = getattr(os, "startfile", None)
+            if callable(startfile):
+                startfile(update_uri)
+            elif not webbrowser.open(update_uri):
+                raise OSError("Windows no pudo abrir la configuración de Windows Update")
+            self.progress_label.configure(text="Windows Update se abrió correctamente")
+        except OSError as exc:
+            messagebox.showerror(
+                "Windows Update",
+                "No fue posible abrir Windows Update. Ábralo desde Configuración de Windows.\n\n"
+                f"Detalle: {exc}",
+                parent=self,
+            )
 
     def _update_cards(self) -> None:
         for kind, card in self.cards.items():

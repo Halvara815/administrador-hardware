@@ -50,19 +50,28 @@ class DriverCollector:
 
         rows = parse_json_rows(result)
         unsigned = [row for row in rows if row.get("IsSigned") is False]
-        status = HealthStatus.WARNING if unsigned else HealthStatus.NORMAL
+        update_result = self.runner.run(PowerShellQuery.DRIVER_UPDATES)
+        updates = parse_json_rows(update_result) if update_result.exit_code == 0 else []
+        status = HealthStatus.WARNING if unsigned or updates else HealthStatus.NORMAL
 
         facts: dict[str, Any] = {
             "Controladores": rows,
             "Consultados": len(rows),
             "No firmados": len(unsigned),
+            "Actualizaciones disponibles": len(updates),
+            "Actualizaciones": updates,
         }
 
-        problem = (
-            f"{len(unsigned)} controlador(es) no firmado(s) detectado(s). Podrían causar inestabilidad o rechazo de firma en 64 bits."
-            if unsigned
-            else None
-        )
+        problems: list[str] = []
+        if unsigned:
+            problems.append(
+                f"{len(unsigned)} controlador(es) no firmado(s) detectado(s). Podrían causar inestabilidad o rechazo de firma en 64 bits."
+            )
+        if updates:
+            problems.append(
+                f"Windows Update ofrece {len(updates)} actualización(es) de controlador."
+            )
+        problem = " ".join(problems) or None
 
         return ComponentResult(
             self.component,
