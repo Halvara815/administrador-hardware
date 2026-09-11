@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import socket
 import threading
 import tkinter as tk
+import webbrowser
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -401,7 +403,11 @@ class StatusCard(ctk.CTkFrame):
         )
         icon_box.grid(row=0, column=0, rowspan=2, padx=(16, 14), pady=(16, 0))
         icon_box.grid_propagate(False)
+        self.icon_box = icon_box
+        self.icon_pulse_on = False
+        self._pulse_after_id: str | None = None
         ctk.CTkLabel(icon_box, text="", image=icon).place(relx=0.5, rely=0.5, anchor="center")
+        self._pulse_after_id = self.after(900, self._pulse_icon)
 
         ctk.CTkLabel(
             self,
@@ -432,6 +438,33 @@ class StatusCard(ctk.CTkFrame):
         self.status_label.configure(
             text=f"● {label or STATUS_LABELS[status]}", text_color=STATUS_COLORS[status]
         )
+
+    def _cancel_pulse(self) -> None:
+        if self._pulse_after_id is not None:
+            try:
+                self.after_cancel(self._pulse_after_id)
+            except (tk.TclError, AttributeError):
+                pass
+            self._pulse_after_id = None
+
+    def destroy(self) -> None:
+        self._cancel_pulse()
+        super().destroy()
+
+    def _pulse_icon(self) -> None:
+        """Pulso visual ligero que mantiene viva la fila sin mover su geometría."""
+        self._pulse_after_id = None
+        try:
+            if not self.winfo_exists() or not self.icon_box.winfo_exists():
+                return
+            self.icon_pulse_on = not self.icon_pulse_on
+            self.icon_box.configure(
+                border_width=1 if self.icon_pulse_on else 0,
+                border_color=theme.ACCENT_TEXT,
+            )
+            self._pulse_after_id = self.after(1800 if self.icon_pulse_on else 1200, self._pulse_icon)
+        except (tk.TclError, AttributeError):
+            self._pulse_after_id = None
 
 
 class MatrixRow(ctk.CTkFrame):
@@ -1619,6 +1652,15 @@ class HardwareAdminApp(ctk.CTk):
             text_color=theme.ACCENT_TEXT,
             command=self.copy_evidence,
         ).grid(row=0, column=3, sticky="e")
+        self.driver_update_link = ctk.CTkLabel(
+            header,
+            text="Actualizar en Windows Update",
+            text_color=theme.ACCENT_TEXT,
+            font=ctk.CTkFont(size=11, underline=True),
+        )
+        self.driver_update_link.grid(row=1, column=3, sticky="e", pady=(4, 0))
+        self.driver_update_link.bind("<Button-1>", lambda _event: self.open_windows_update())
+        self.driver_update_link.grid_remove()
 
         self.console = ctk.CTkTextbox(
             panel,
@@ -1956,6 +1998,7 @@ class HardwareAdminApp(ctk.CTk):
             self._draw_monitoring()
         else:
             self.monitoring_panel.grid_remove()
+        self._sync_driver_update_link()
         for kind, panel in self.section_panels.items():
             if kind is component:
                 panel.grid()
@@ -2223,6 +2266,7 @@ class HardwareAdminApp(ctk.CTk):
         result = self.results_by_kind.get(self.selected_component)
         name = SECTION_NAMES[self.selected_component]
         if result is None:
+            self._sync_driver_update_link()
             self.console_context.configure(text=f"Sin analizar · {name}")
             self.console_indicator.configure(text_color=theme.MUTED)
             self._set_console(
@@ -2233,6 +2277,7 @@ class HardwareAdminApp(ctk.CTk):
             return
 
         self.console_context.configure(text=f"Componente: {result.name}")
+        self._sync_driver_update_link()
         self.console_indicator.configure(text_color=STATUS_COLORS[result.status])
         lines = [
             f"COMPONENTE: {result.name}",
@@ -2282,6 +2327,30 @@ class HardwareAdminApp(ctk.CTk):
             )
         self._set_console("\n".join(lines))
         self._sync_evidence_window()
+
+    def _sync_driver_update_link(self) -> None:
+        result = self.results_by_kind.get(ComponentKind.DRIVER)
+        updates = result.facts.get("Actualizaciones", []) if result else []
+        if self.selected_component is ComponentKind.DRIVER and updates:
+            self.driver_update_link.grid()
+        else:
+            self.driver_update_link.grid_remove()
+
+    def open_windows_update(self) -> None:
+        """Abre el enlace oficial para actualizar el controlador seleccionado."""
+        update_uri = "ms-settings:windowsupdate"
+        try:
+            startfile = getattr(os, "startfile", None)
+            if callable(startfile):
+                startfile(update_uri)
+            elif not webbrowser.open(update_uri):
+                raise OSError("Windows no pudo abrir Windows Update")
+        except OSError as exc:
+            messagebox.showerror(
+                "Windows Update",
+                f"No fue posible abrir Windows Update:\n{exc}",
+                parent=self,
+            )
 
     def _set_console(self, text: str) -> None:
         _fill_console(self.console, text)

@@ -246,3 +246,30 @@ class DeferredCallbackTests(TestCase):
         self._pump(200)
 
         self.assertEqual(self.errores, [], f"callbacks tras destruir: {self.errores}")
+
+    def test_destroying_status_card_cancels_pulse_and_raises_no_callback_error(self) -> None:
+        import customtkinter as ctk
+
+        from hardware_admin.ui.icons import render
+        from hardware_admin.ui.main_window import StatusCard
+
+        icono = ctk.CTkImage(render("cpu", 24, "#FFFFFF"), size=(24, 24))
+        card = StatusCard(self.root, "Procesador", icono, "#1E293B")
+        card.pack()
+        self.root.update_idletasks()
+        self.root.update()
+
+        pulse_id = card._pulse_after_id
+        self.assertIsNotNone(pulse_id, "StatusCard no inicializó _pulse_after_id")
+        active_after_ids = self.root.tk.call("after", "info")
+        self.assertIn(pulse_id, active_after_ids, "El callback de pulso no está registrado en after info")
+
+        # Al destruir la tarjeta, debe cancelarse el callback _pulse_icon explícitamente
+        card.destroy()
+        self.assertIsNone(card._pulse_after_id, "_pulse_after_id debe ser None tras destroy()")
+
+        remaining_after_ids = self.root.tk.call("after", "info")
+        self.assertNotIn(pulse_id, remaining_after_ids, "El ID de callback cancelado no debe seguir en after info")
+
+        self._pump(1200)
+        self.assertEqual(self.errores, [], f"callbacks tras destruir StatusCard: {self.errores}")

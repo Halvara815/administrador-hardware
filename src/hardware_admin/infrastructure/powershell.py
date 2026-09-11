@@ -18,6 +18,7 @@ class PowerShellQuery(StrEnum):
     USB_PRESENT = "usb_present"
     PCI_PRESENT = "pci_present"
     DRIVERS = "drivers"
+    DRIVER_UPDATES = "driver_updates"
     PROBLEM_DEVICES = "problem_devices"
     VIDEO_CONTROLLERS = "video_controllers"
     DISKS = "disks"
@@ -77,6 +78,21 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
                 @{Name='Tipo';Expression={$_.DeviceClass}},
                 @{Name='Estado';Expression={if ($_.IsSigned) {'Firmado'} else {'No firmado'}}},
                 DriverVersion,DriverDate,Manufacturer,IsSigned,DeviceID,HardWareID)
+    """,
+    PowerShellQuery.DRIVER_UPDATES: """
+        $session = New-Object -ComObject Microsoft.Update.Session
+        $searcher = $session.CreateUpdateSearcher()
+        $updates = $searcher.Search("IsInstalled=0 and IsHidden=0 and Type='Driver'").Updates
+        $data = @($updates | ForEach-Object {
+            [PSCustomObject]@{
+                Titulo=$_.Title;
+                Fabricante=$_.DriverManufacturer;
+                Modelo=$_.DriverModel;
+                Version=$_.DriverVerVersion;
+                Fecha=$_.DriverVerDate;
+                KB=(@($_.KBArticleIDs) -join ', ')
+            }
+        })
     """,
     PowerShellQuery.PROBLEM_DEVICES: """
         $data = @(Get-PnpDevice -PresentOnly |

@@ -587,6 +587,141 @@ class DriverCorrelationAndRulesTests(TestCase):
         # Ninguna recomendación de actualización por fecha
         self.assertEqual(len(recs), 0)
 
+    def test_driver_updates_ok_with_zero_updates_is_normal(self) -> None:
+        mock_runner = MagicMock()
+        drivers_json = json.dumps(
+            [
+                {
+                    "Nombre": "Standard Keyboard",
+                    "DeviceID": "ACPI\\PNP0303\\4&1234567&0",
+                    "IsSigned": True,
+                    "DriverDate": "2020-01-01",
+                    "DriverVersion": "10.0.19041.1",
+                }
+            ]
+        )
+
+        def side_effect(q: PowerShellQuery) -> CommandResult:
+            if q == PowerShellQuery.DRIVERS:
+                return mock_cmd_result(drivers_json, q)
+            if q == PowerShellQuery.PROBLEM_DEVICES:
+                return mock_cmd_result("[]", q)
+            if q == PowerShellQuery.DRIVER_UPDATES:
+                return mock_cmd_result("[]", q, exit_code=0)
+            return mock_cmd_result("[]", q)
+
+        mock_runner.run.side_effect = side_effect
+        collector = DriverCollector(runner=mock_runner)
+        result = collector.collect()
+
+        self.assertEqual(result.status, HealthStatus.NORMAL)
+        self.assertEqual(result.facts["Actualizaciones disponibles"], 0)
+        self.assertEqual(result.facts["Actualizaciones"], [])
+        self.assertIsNone(result.possible_problem)
+
+    def test_driver_updates_failure_without_stdout_is_error_and_in_errores_de_consulta(self) -> None:
+        mock_runner = MagicMock()
+        drivers_json = json.dumps(
+            [
+                {
+                    "Nombre": "Standard Keyboard",
+                    "DeviceID": "ACPI\\PNP0303\\4&1234567&0",
+                    "IsSigned": True,
+                    "DriverDate": "2020-01-01",
+                    "DriverVersion": "10.0.19041.1",
+                }
+            ]
+        )
+
+        def side_effect(q: PowerShellQuery) -> CommandResult:
+            if q == PowerShellQuery.DRIVERS:
+                return mock_cmd_result(drivers_json, q)
+            if q == PowerShellQuery.PROBLEM_DEVICES:
+                return mock_cmd_result("[]", q)
+            if q == PowerShellQuery.DRIVER_UPDATES:
+                # Falla sin stdout, con o sin stderr
+                return mock_cmd_result("", q, exit_code=1, error="Acceso denegado a COM")
+            return mock_cmd_result("[]", q)
+
+        mock_runner.run.side_effect = side_effect
+        collector = DriverCollector(runner=mock_runner)
+        result = collector.collect()
+
+        # Debe quedar en ERROR, nunca NORMAL
+        self.assertEqual(result.status, HealthStatus.ERROR)
+        self.assertEqual(result.facts["Actualizaciones disponibles"], "No disponible")
+        self.assertEqual(result.facts["Actualizaciones"], "No disponible")
+        self.assertIsNotNone(result.possible_problem)
+        self.assertIn("No se pudo consultar Windows Update", str(result.possible_problem))
+        self.assertIn("Acceso denegado a COM", str(result.possible_problem))
+
+        # Evidencia fallida presente
+        update_ev = [
+            e for e in result.evidence
+            if e.query == "Microsoft.Update.Session (DriverUpdates)"
+        ]
+        self.assertEqual(len(update_ev), 1)
+        self.assertFalse(update_ev[0].succeeded)
+        self.assertIn("Acceso denegado a COM", update_ev[0].output)
+
+        # Debe reflejarse en errores_de_consulta y subir consultas_fallidas
+        report = DiagnosticReport(
+            started_at=datetime(2026, 9, 5, 10, 0, tzinfo=UTC),
+            completed_at=datetime(2026, 9, 5, 10, 1, tzinfo=UTC),
+            results=(result,),
+            conclusion="Fallo de consulta de controladores.",
+        )
+        payload = build_payload(report)
+        self.assertEqual(payload["cobertura"]["consultas_fallidas"], 1)
+        self.assertEqual(len(payload["errores_de_consulta"]), 1)
+        self.assertEqual(payload["errores_de_consulta"][0]["componente"], "driver")
+        self.assertIn("No se pudo consultar Windows Update", payload["errores_de_consulta"][0]["detalle"])
+
+    def test_driver_updates_ok_with_updates_is_warning(self) -> None:
+        mock_runner = MagicMock()
+        drivers_json = json.dumps(
+            [
+                {
+                    "Nombre": "Realtek Audio",
+                    "DeviceID": "HDAUDIO\\FUNC_01",
+                    "IsSigned": True,
+                    "DriverDate": "2020-01-01",
+                    "DriverVersion": "6.0.1.1",
+                }
+            ]
+        )
+        updates_json = json.dumps(
+            [
+                {
+                    "Titulo": "Realtek - Audio - 6.0.8.1",
+                    "Fabricante": "Realtek",
+                    "Modelo": "Realtek Audio",
+                    "Version": "6.0.8.1",
+                    "Fecha": "2023-01-01",
+                    "KB": "",
+                }
+            ]
+        )
+
+        def side_effect(q: PowerShellQuery) -> CommandResult:
+            if q == PowerShellQuery.DRIVERS:
+                return mock_cmd_result(drivers_json, q)
+            if q == PowerShellQuery.PROBLEM_DEVICES:
+                return mock_cmd_result("[]", q)
+            if q == PowerShellQuery.DRIVER_UPDATES:
+                return mock_cmd_result(updates_json, q, exit_code=0)
+            return mock_cmd_result("[]", q)
+
+        mock_runner.run.side_effect = side_effect
+        collector = DriverCollector(runner=mock_runner)
+        result = collector.collect()
+
+        self.assertEqual(result.status, HealthStatus.WARNING)
+        self.assertEqual(result.facts["Actualizaciones disponibles"], 1)
+        self.assertEqual(len(result.facts["Actualizaciones"]), 1)
+        self.assertIsNotNone(result.possible_problem)
+        self.assertIn("Windows Update ofrece 1 actualización(es)", str(result.possible_problem))
+
 
 class DiagnosticReportSerializationTests(TestCase):
     """Pruebas de serialización de reportes HTML, JSON y TXT con datos de F4."""

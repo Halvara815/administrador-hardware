@@ -57,7 +57,6 @@ class DriverCollector:
 
         rows = parse_json_rows(result)
         unsigned = [row for row in rows if row.get("IsSigned") is False]
-
         # Correlación estricta y exclusiva por identificadores normalizados
         # Prohibido correlacionar por FriendlyName, nombre comercial o coincidencia parcial de texto.
         prob_result = self.runner.run(PowerShellQuery.PROBLEM_DEVICES)
@@ -98,16 +97,45 @@ class DriverCollector:
                     }
                 )
 
-        status = HealthStatus.WARNING if (unsigned or correlated_problems) else HealthStatus.NORMAL
+        update_result = self.runner.run(PowerShellQuery.DRIVER_UPDATES)
+        updates_failed = update_result.exit_code != 0
+
+        if updates_failed:
+            status = HealthStatus.ERROR
+            updates = []
+            updates_fact: Any = "No disponible"
+            updates_count_fact: Any = "No disponible"
+        else:
+            updates = parse_json_rows(update_result)
+            updates_fact = updates
+            updates_count_fact = len(updates)
+            status = (
+                HealthStatus.WARNING
+                if (unsigned or correlated_problems or updates)
+                else HealthStatus.NORMAL
+            )
 
         facts: dict[str, Any] = {
             "Controladores": rows,
             "Consultados": len(rows),
             "No firmados": len(unsigned),
             "Dispositivos con fallo PnP": correlated_problems,
+            "Actualizaciones disponibles": updates_count_fact,
+            "Controladores desactualizados": updates_fact,
+            "Actualizaciones": updates_fact,
         }
 
         problem_parts: list[str] = []
+        if updates_failed:
+            err_detail = (update_result.error or update_result.output or "").strip()
+            if err_detail:
+                problem_parts.append(
+                    f"No se pudo consultar Windows Update para controladores pendientes: {err_detail}."
+                )
+            else:
+                problem_parts.append(
+                    "No se pudo consultar Windows Update para controladores pendientes."
+                )
         if unsigned:
             problem_parts.append(
                 f"{len(unsigned)} controlador(es) no firmado(s) detectado(s)."
@@ -115,6 +143,10 @@ class DriverCollector:
         if correlated_problems:
             problem_parts.append(
                 f"{len(correlated_problems)} controlador(es) correlacionado(s) con dispositivo con código de error PnP activo."
+            )
+        if not updates_failed and updates:
+            problem_parts.append(
+                f"Windows Update ofrece {len(updates)} actualización(es) de controlador."
             )
 
         problem = " ".join(problem_parts) if problem_parts else None
@@ -139,12 +171,39 @@ class DriverCollector:
                 )
             )
 
+        if updates_failed:
+            output_or_err = (
+                update_result.output.strip()
+                or update_result.error.strip()
+                or "Error al consultar Windows Update (código de salida distinto de 0 sin salida)"
+            )
+            evidence_items.append(
+                EvidenceRecord(
+                    "PowerShell",
+                    "Microsoft.Update.Session (DriverUpdates)",
+                    output_or_err,
+                    datetime.now(UTC),
+                    False,
+                )
+            )
+        elif update_result.output:
+            evidence_items.append(
+                EvidenceRecord(
+                    "PowerShell",
+                    "Microsoft.Update.Session (DriverUpdates)",
+                    update_result.output,
+                    datetime.now(UTC),
+                    True,
+                )
+            )
+
         return ComponentResult(
             self.component,
             "Controladores",
             facts,
             summary=f"{len(rows)} controladores"
-            + (f" · {len(correlated_problems)} con fallo PnP" if correlated_problems else ""),
+            + (f" · {len(correlated_problems)} con fallo PnP" if correlated_problems else "")
+            + (" · Fallo al consultar actualizaciones" if updates_failed else ""),
             status=status,
             possible_problem=problem,
             evidence=tuple(evidence_items),
