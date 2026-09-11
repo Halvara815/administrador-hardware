@@ -181,7 +181,7 @@ def main() -> None:
     print(f"SHA-256           : {checksum}")
     print(f"Huella escrita en : {checksum_file}")
     print("\nComprobacion pendiente en un equipo limpio sin Python instalado:")
-    print("  descomprimir el ZIP, ejecutar el EXE y recorrer los 15 apartados.")
+    print("  descomprimir el ZIP, ejecutar el EXE y recorrer los 14 apartados.")
 
 
 if __name__ == "__main__":

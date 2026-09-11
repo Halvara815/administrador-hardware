@@ -9,7 +9,7 @@ import threading
 import tkinter as tk
 import webbrowser
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from functools import partial
 from pathlib import Path
@@ -40,6 +40,11 @@ from hardware_admin.services.monitoring_service import (
     Sample,
 )
 from hardware_admin.services.scan_service import ScanService
+from hardware_admin.services.upgrade_advisor import (
+    UpgradePreferences,
+    build_upgrade_advice,
+    format_upgrade_advice,
+)
 from hardware_admin.ui import icons, theme
 from hardware_admin.ui.charts import (
     Bar,
@@ -61,6 +66,8 @@ STATUS_LABELS = {
 }
 
 STATUS_COLORS = theme.STATUS_COLORS
+
+INITIAL_CONCLUSION_TEXT = "Analice una sección o el equipo completo para recopilar evidencia."
 
 #: Salto de línea usado al componer las vistas de texto.
 NL = chr(10)
@@ -95,8 +102,7 @@ NAV_ITEMS: tuple[NavEntry, ...] = (
     NavEntry("check", "11. Conectividad", action="connectivity"),
     NavEntry("io", "12. Monitorización", ComponentKind.IO),
     NavEntry("info", "13. Recomendaciones", action="recommendations"),
-    NavEntry("report", "14. Generar reporte", action="report"),
-    NavEntry("save", "15. Exportar diagnóstico", action="export"),
+    NavEntry("save", "14. Exportar diagnóstico", action="export"),
     NavEntry("advanced", "0. Avanzado", action="advanced"),
 )
 
@@ -310,24 +316,344 @@ def adapter_bars(facts: dict[str, Any]) -> list[Bar]:
     return bars
 
 
-def _format_value(value: Any, indent: str = "") -> str:
+_DETAIL_LABELS = {
+    "DeviceID": "Id. de dispositivo",
+    "HardWareID": "Id. de hardware",
+    "DriverDate": "Fecha del controlador",
+    "DriverVersion": "Versión",
+    "IsSigned": "Firma",
+    "Manufacturer": "Fabricante",
+    "Nombre": "Nombre",
+}
+
+_DRIVER_CATEGORY_LABELS = {
+    "NET": "Red y conectividad",
+    "SYSTEM": "Sistema y firmware",
+    "PROCESSOR": "Procesador",
+    "DISPLAY": "Gráficos y vídeo",
+    "MEDIA": "Audio y vídeo",
+    "AUDIOENDPOINT": "Audio",
+    "AUDIOSWENDPOINT": "Audio",
+    "HIDCLASS": "Entrada y dispositivos HID",
+    "USB": "USB",
+    "SCSIADAPTER": "Almacenamiento",
+    "DISKDRIVE": "Almacenamiento",
+    "IDE": "Almacenamiento",
+    "CDROM": "Almacenamiento",
+    "PRINTER": "Impresión",
+    "PRINTQUEUE": "Impresión",
+    "SECURITYDEVICES": "Seguridad",
+    "SOFTWAREDEVICE": "Dispositivos de software",
+}
+
+_DRIVER_CATEGORY_COLORS = {
+    "Red y conectividad": theme.COMPONENT_COLORS[ComponentKind.NETWORK],
+    "Sistema y firmware": theme.COMPONENT_COLORS[ComponentKind.SYSTEM],
+    "Procesador": theme.COMPONENT_COLORS[ComponentKind.CPU],
+    "Gráficos y vídeo": theme.COMPONENT_COLORS[ComponentKind.MONITOR_GPU],
+    "Audio y vídeo": "#E879F9",
+    "Audio": "#E879F9",
+    "Entrada y dispositivos HID": theme.COMPONENT_COLORS[ComponentKind.USB],
+    "USB": theme.COMPONENT_COLORS[ComponentKind.USB],
+    "Almacenamiento": theme.COMPONENT_COLORS[ComponentKind.DISK],
+    "Impresión": theme.YELLOW,
+    "Seguridad": theme.GREEN,
+    "Dispositivos de software": theme.ACCENT_TEXT,
+}
+
+_DRIVER_FACT_ORDER = (
+    "Consultados",
+    "No firmados",
+    "Dispositivos con fallo PnP",
+    "Actualizaciones disponibles",
+    "Actualizaciones",
+    "Controladores",
+)
+
+
+def _display_value(value: Any) -> str:
+    if value in (None, ""):
+        return "No disponible"
+    if isinstance(value, bool):
+        return "Sí" if value else "No"
+    return str(value)
+
+
+def _record_title(record: dict[str, Any]) -> tuple[str, str]:
+    for key in ("Nombre", "Dispositivo", "Adaptador", "Unidad", "Título", "Titulo", "Id"):
+        value = record.get(key)
+        if value not in (None, ""):
+            return key, _display_value(value)
+    return "", "Registro"
+
+
+def _driver_category(record: dict[str, Any]) -> str:
+    raw_type = _display_value(record.get("Tipo")).upper()
+    return _DRIVER_CATEGORY_LABELS.get(raw_type, f"Otros · {raw_type}")
+
+
+def _format_record(record: dict[str, Any], indent: str, hidden_keys: set[str] | None = None) -> list[str]:
+    title_key, title = _record_title(record)
+    hidden = hidden_keys or set()
+    lines = [f"{indent}• {title}"]
+    for key, value in record.items():
+        if key == title_key or key in hidden:
+            continue
+        label = _DETAIL_LABELS.get(key, key)
+        display_value = (
+            "Firmado" if value else "No firmado"
+        ) if key == "IsSigned" else _display_value(value)
+        lines.append(f"{indent}  {label}: {display_value}")
+    return lines
+
+
+def _record_groups(
+    records: list[dict[str, Any]],
+    component: ComponentKind | None,
+    fact_name: str,
+) -> list[tuple[str | None, list[dict[str, Any]], set[str]]]:
+    if component is ComponentKind.DRIVER and fact_name == "Controladores":
+        grouped: dict[str, list[dict[str, Any]]] = {}
+        for record in records:
+            grouped.setdefault(_driver_category(record), []).append(record)
+        return [
+            (
+                category,
+                sorted(grouped[category], key=lambda item: _record_title(item)[1].casefold()),
+                {"Tipo"},
+            )
+            for category in sorted(grouped, key=str.casefold)
+        ]
+
+    group_key = next(
+        (
+            key
+            for key in ("Categoría", "Categoria", "Tipo", "Clase", "Bus", "Tipo de medio")
+            if any(record.get(key) not in (None, "") for record in records)
+        ),
+        None,
+    )
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        group = _display_value(record.get(group_key)) if group_key else "Registros"
+        groups.setdefault(group, []).append(record)
+
+    return [
+        (
+            group if group_key else None,
+            sorted(groups[group], key=lambda item: _record_title(item)[1].casefold()),
+            {group_key} if group_key else set(),
+        )
+        for group in sorted(groups, key=str.casefold)
+    ]
+
+
+def _format_records(
+    records: list[dict[str, Any]],
+    indent: str,
+    component: ComponentKind | None,
+    fact_name: str,
+) -> str:
+    groups = _record_groups(records, component, fact_name)
+
+    generic_lines: list[str] = []
+    for group, group_records, hidden_keys in groups:
+        if group:
+            generic_lines.append(f"{indent}{group} ({len(group_records)})")
+        for record in group_records:
+            generic_lines.extend(
+                _format_record(
+                    record,
+                    f"{indent}  " if group else indent,
+                    hidden_keys,
+                )
+            )
+    return "\n".join(generic_lines)
+
+
+@dataclass(frozen=True, slots=True)
+class EvidenceCard:
+    title: str
+    body: str
+    color: str
+    collapsible: bool = False
+
+
+def _evidence_card_color(component: ComponentKind, category: str | None = None) -> str:
+    if category:
+        return _DRIVER_CATEGORY_COLORS.get(category, theme.ACCENT_TEXT)
+    return theme.COMPONENT_COLORS.get(component, theme.ACCENT_TEXT)
+
+
+def evidence_cards(component: ComponentKind, facts: dict[str, Any]) -> list[EvidenceCard]:
+    """Convierte facts en tarjetas visuales, manteniendo todo el detalle disponible."""
+    cards: list[EvidenceCard] = []
+    scalars: list[str] = []
+    for key, value in facts.items():
+        if str(key).startswith("_"):
+            continue
+        if isinstance(value, (list, dict)):
+            continue
+        scalars.append(f"{key}: {_display_value(value)}")
+    if scalars:
+        cards.append(EvidenceCard("Resumen", "\n".join(scalars), _evidence_card_color(component)))
+
+    for key, value in facts.items():
+        if str(key).startswith("_"):
+            continue
+        if (
+            component is ComponentKind.DRIVER
+            and key == "Controladores desactualizados"
+            and facts.get("Actualizaciones") == value
+        ):
+            continue
+        if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+            for category, records, hidden_keys in _record_groups(value, component, str(key)):
+                title = f"{key} · {category} ({len(records)})" if category else f"{key} ({len(records)})"
+                body = "\n".join(
+                    line
+                    for record in records
+                    for line in _format_record(record, "", hidden_keys)
+                )
+                cards.append(
+                    EvidenceCard(
+                        title,
+                        body,
+                        _evidence_card_color(component, category),
+                        collapsible=True,
+                    )
+                )
+            continue
+        if isinstance(value, (list, dict)):
+            title = f"{key} ({len(value)})" if isinstance(value, list) else str(key)
+            cards.append(
+                EvidenceCard(
+                    title,
+                    _format_value(value, "", component=component, fact_name=str(key)),
+                    _evidence_card_color(component),
+                    collapsible=True,
+                )
+            )
+    return cards
+
+
+_ADVISOR_CARD_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("ram", "RAM", theme.COMPONENT_COLORS[ComponentKind.MEMORY]),
+    ("ssd", "SSD", theme.COMPONENT_COLORS[ComponentKind.DISK]),
+    ("gpu", "GPU · FUENTE Y ESPACIO", theme.COMPONENT_COLORS[ComponentKind.MONITOR_GPU]),
+    ("priorización", "QUÉ ACTUALIZAR PRIMERO", theme.YELLOW),
+)
+
+
+def upgrade_advisor_cards(
+    advice: dict[str, Any],
+    recommendations: Sequence[Any] = (),
+) -> list[EvidenceCard]:
+    """Convierte las fichas del asesor en tarjetas compactas y desplegables."""
+
+    cards: list[EvidenceCard] = []
+    if recommendations:
+        body_lines: list[str] = []
+        for item in recommendations:
+            body_lines.extend(
+                [
+                    str(getattr(item, "title", "Recomendación")),
+                    f"Causa: {getattr(item, 'cause', 'No disponible')}",
+                    f"Comprobación: {getattr(item, 'verification', 'No disponible')}",
+                    "",
+                ]
+            )
+        cards.append(
+            EvidenceCard(
+                f"RECOMENDACIONES DEL DIAGNÓSTICO ({len(recommendations)})",
+                "\n".join(body_lines).strip(),
+                theme.YELLOW,
+                True,
+            )
+        )
+
+    origin = str(advice.get("origen") or "Sin datos de asesor para esta sesión.")
+    limits = advice.get("limitaciones")
+    summary_lines = [origin]
+    if isinstance(limits, list):
+        summary_lines.extend(f"• {item}" for item in limits)
+    cards.append(EvidenceCard("RESUMEN DEL ASESOR", "\n".join(summary_lines), theme.ACCENT_TEXT))
+
+    for key, title, color in _ADVISOR_CARD_SPECS:
+        section = advice.get(key)
+        if not isinstance(section, dict):
+            continue
+        status = str(section.get("estado") or "PENDIENTE DE VERIFICACIÓN")
+        body = [f"Estado: {status}", "", str(section.get("conclusion") or "Sin conclusión.")]
+        facts = section.get("hechos")
+        if isinstance(facts, list) and facts:
+            body.extend(["", "HECHOS DE ESTA SESIÓN"])
+            body.extend(f"• {item}" for item in facts)
+        capacity = section.get("capacidad_objetivo")
+        if capacity and capacity != "No indicada":
+            body.extend(["", f"CAPACIDAD OBJETIVO: {capacity}"])
+        actions = section.get("acciones")
+        if isinstance(actions, list) and actions:
+            body.extend(["", "ORDEN PROPUESTO"])
+            for action in actions:
+                if isinstance(action, dict):
+                    body.append(f"{action.get('orden', '?')}. {action.get('área', 'Área')}")
+                    body.append(f"   {action.get('acción', '')}")
+                    body.append(f"   {action.get('fundamento', '')}")
+        pending = section.get("comprobaciones_pendientes")
+        if isinstance(pending, list) and pending:
+            body.extend(["", "PENDIENTE"])
+            body.extend(f"• {item}" for item in pending)
+        alternative = section.get("alternativa_sin_compra")
+        if alternative:
+            body.extend(["", f"SIN COMPRA: {alternative}"])
+        cards.append(EvidenceCard(f"ASESOR · {title} · {status}", "\n".join(body), color, True))
+    return cards
+
+
+def _format_value(
+    value: Any,
+    indent: str = "",
+    *,
+    component: ComponentKind | None = None,
+    fact_name: str = "",
+) -> str:
     if isinstance(value, list):
         if not value:
             return "Sin elementos"
-        lines: list[str] = []
-        for index, item in enumerate(value, start=1):
-            if isinstance(item, dict):
-                compact = " | ".join(
-                    f"{key}: {val if val not in (None, '') else 'No disponible'}"
-                    for key, val in item.items()
-                )
-                lines.append(f"{indent}{index}. {compact}")
-            else:
-                lines.append(f"{indent}{index}. {item}")
-        return "\n".join(lines)
+        if all(isinstance(item, dict) for item in value):
+            return _format_records(value, indent, component, fact_name)
+        return "\n".join(f"{indent}• {_display_value(item)}" for item in value)
     if isinstance(value, dict):
-        return "\n".join(f"{indent}{key}: {val}" for key, val in value.items())
-    return str(value)
+        lines: list[str] = []
+        for key, item in value.items():
+            lines.append(f"{indent}{_DETAIL_LABELS.get(str(key), str(key))}:")
+            lines.append(_format_value(item, f"{indent}  ", component=component, fact_name=str(key)))
+        return "\n".join(lines)
+    return _display_value(value)
+
+
+def format_normalized_facts(component: ComponentKind, facts: dict[str, Any]) -> str:
+    """Presenta datos estructurados por secciones sin alterar la evidencia cruda."""
+    keys = [key for key in facts if not str(key).startswith("_")]
+    if component is ComponentKind.DRIVER:
+        ordered = [key for key in _DRIVER_FACT_ORDER if key in facts]
+        ordered.extend(key for key in keys if key not in ordered)
+        keys = ordered
+
+    lines = ["DATOS NORMALIZADOS", "-------------------"]
+    for key in keys:
+        # Ambas claves contienen la misma lista de Windows Update; mostrar una sola evita duplicar ruido.
+        if (
+            component is ComponentKind.DRIVER
+            and key == "Controladores desactualizados"
+            and facts.get("Actualizaciones") == facts[key]
+        ):
+            continue
+        lines.append(f"{key}:")
+        lines.append(_format_value(facts[key], "  ", component=component, fact_name=str(key)))
+        lines.append("")
+    return "\n".join(lines).rstrip()
 
 
 def _console_tag(line: str) -> str | None:
@@ -439,6 +765,11 @@ class StatusCard(ctk.CTkFrame):
             text=f"● {label or STATUS_LABELS[status]}", text_color=STATUS_COLORS[status]
         )
 
+    def reset(self) -> None:
+        """Restaura el estado previo a cualquier análisis."""
+        self.value_label.configure(text="--")
+        self.status_label.configure(text="● Sin analizar", text_color=theme.MUTED)
+
     def _cancel_pulse(self) -> None:
         if self._pulse_after_id is not None:
             try:
@@ -537,6 +868,12 @@ class MatrixRow(ctk.CTkFrame):
         )
         self.cells[3].configure(text=result.possible_problem or "—")
 
+    def reset(self) -> None:
+        """Elimina el resultado de una sesión sin alterar la fila seleccionada."""
+        self.cells[1].configure(text="—")
+        self.cells[2].configure(text="● Sin analizar", text_color=theme.MUTED)
+        self.cells[3].configure(text="—")
+
 
 class MatrixTable(ctk.CTkFrame):
     """Tabla de diagnóstico con icono por componente y estado coloreado."""
@@ -592,6 +929,11 @@ class MatrixTable(ctk.CTkFrame):
         if row is not None:
             row.update_result(result)
 
+    def reset(self) -> None:
+        """Restaura todas las filas al estado inicial de diagnóstico."""
+        for row in self.rows.values():
+            row.reset()
+
 
 def cancel_after_jobs(widget: Any, jobs: list[str]) -> int:
     """Cancela los `after` que programó este widget y vacía la lista.
@@ -619,10 +961,85 @@ def cancel_after_jobs(widget: Any, jobs: list[str]) -> int:
     return cancelled
 
 
-class EvidenceWindow(ctk.CTkToplevel):
-    """Evidencia tecnica a pantalla completa, para leer salidas largas sin recortes."""
+class CollapsibleEvidenceCard(ctk.CTkFrame):
+    """Tarjeta de evidencia que reserva el detalle para cuando se solicita."""
 
-    def __init__(self, master: Any, heading: str, body: str, expand_icon: ctk.CTkImage) -> None:
+    def __init__(self, master: Any, card: EvidenceCard) -> None:
+        super().__init__(
+            master,
+            fg_color=theme.SURFACE,
+            border_color=card.color,
+            border_width=1,
+            corner_radius=10,
+        )
+        self.card = card
+        self.expanded = not card.collapsible
+        self.grid_columnconfigure(0, weight=1)
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=14, pady=(8, 4))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text=card.title.upper(),
+            anchor="w",
+            font=ctk.CTkFont(size=13, weight="bold"),
+            text_color=card.color,
+        ).grid(row=0, column=0, sticky="ew")
+
+        self.toggle_button: ctk.CTkButton | None = None
+        if card.collapsible:
+            self.toggle_button = ctk.CTkButton(
+                header,
+                text="⌄" if self.expanded else ">",
+                width=28,
+                height=26,
+                corner_radius=6,
+                fg_color="transparent",
+                hover_color=theme.SURFACE_HOVER,
+                text_color=card.color,
+                font=ctk.CTkFont(size=16, weight="bold"),
+                command=self.toggle,
+            )
+            self.toggle_button.grid(row=0, column=1, sticky="e", padx=(8, 0))
+
+        self.detail = ctk.CTkLabel(
+            self,
+            text=card.body,
+            anchor="nw",
+            justify="left",
+            wraplength=620,
+            font=ctk.CTkFont(family=theme.DATA_FONT_FAMILY, size=12),
+            text_color=theme.TEXT,
+        )
+        self.detail.grid(row=1, column=0, sticky="ew", padx=14, pady=(0, 12))
+        if not self.expanded:
+            self.detail.grid_remove()
+
+    def toggle(self) -> None:
+        """Muestra u oculta el detalle sin modificar la evidencia disponible."""
+        if not self.card.collapsible:
+            return
+        self.expanded = not self.expanded
+        if self.expanded:
+            self.detail.grid()
+        else:
+            self.detail.grid_remove()
+        if self.toggle_button is not None:
+            self.toggle_button.configure(text="⌄" if self.expanded else ">")
+
+
+class EvidenceWindow(ctk.CTkToplevel):
+    """Evidencia técnica con vista organizada y texto completo copiable."""
+
+    def __init__(
+        self,
+        master: Any,
+        heading: str,
+        body: str,
+        expand_icon: ctk.CTkImage,
+        result: ComponentResult | None = None,
+    ) -> None:
         super().__init__(master, fg_color=theme.BACKGROUND)
         self.title("Evidencia técnica")
         self.geometry("1280x820")
@@ -675,8 +1092,33 @@ class EvidenceWindow(ctk.CTkToplevel):
             command=self.destroy,
         ).grid(row=0, column=3, sticky="e")
 
-        self.console = ctk.CTkTextbox(
+        self.body = body
+        self.views = ctk.CTkTabview(
             self,
+            fg_color=theme.SURFACE,
+            segmented_button_fg_color=theme.SURFACE_ALT,
+            segmented_button_selected_color=theme.ACCENT,
+            segmented_button_selected_hover_color=theme.ACCENT_HOVER,
+            segmented_button_unselected_color=theme.SURFACE_ALT,
+            segmented_button_unselected_hover_color=theme.SURFACE_HOVER,
+            text_color=theme.TEXT,
+        )
+        self.views.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        self.views.add("Vista organizada")
+        self.views.add("Evidencia completa")
+
+        self.organized = ctk.CTkScrollableFrame(
+            self.views.tab("Vista organizada"),
+            fg_color="transparent",
+            scrollbar_button_color=theme.BORDER,
+            scrollbar_button_hover_color=theme.ACCENT,
+        )
+        self.organized.pack(fill="both", expand=True, padx=2, pady=2)
+        self.organized.grid_columnconfigure(0, weight=1, uniform="evidence_cards")
+        self.organized.grid_columnconfigure(1, weight=1, uniform="evidence_cards")
+
+        self.console = ctk.CTkTextbox(
+            self.views.tab("Evidencia completa"),
             fg_color=theme.TERMINAL,
             border_color=theme.BORDER,
             border_width=1,
@@ -685,9 +1127,11 @@ class EvidenceWindow(ctk.CTkToplevel):
             font=ctk.CTkFont(family="Consolas", size=13),
             wrap="none",
         )
-        self.console.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 18))
+        self.console.pack(fill="both", expand=True, padx=2, pady=2)
         _configure_console_tags(self.console)
         _fill_console(self.console, body)
+        self._render_organized(result)
+        self.views.set("Vista organizada" if result is not None else "Evidencia completa")
 
         self.bind("<Escape>", lambda _event: self.destroy())
         self.transient(master)
@@ -707,13 +1151,58 @@ class EvidenceWindow(ctk.CTkToplevel):
         cancel_after_jobs(self, self._after_jobs)
         super().destroy()
 
-    def update_content(self, heading: str, body: str) -> None:
+    def _render_organized(self, result: ComponentResult | None) -> None:
+        for child in self.organized.winfo_children():
+            child.destroy()
+        if result is None:
+            ctk.CTkLabel(
+                self.organized,
+                text="Sin datos estructurados para esta evidencia.",
+                text_color=theme.MUTED,
+                font=ctk.CTkFont(size=13),
+            ).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=16)
+            return
+
+        cards = evidence_cards(result.component, result.facts)
+        if not cards:
+            ctk.CTkLabel(
+                self.organized,
+                text="El componente no devolvió datos normalizados.",
+                text_color=theme.MUTED,
+                font=ctk.CTkFont(size=13),
+            ).grid(row=0, column=0, columnspan=2, sticky="w", padx=16, pady=16)
+            return
+
+        # Cada columna tiene su propia pila. Una cuadrícula de tarjetas comparte
+        # la altura de cada fila y hacía que abrir una tarjeta estirase la vecina.
+        columns: list[ctk.CTkFrame] = []
+        for column_index in range(2):
+            column = ctk.CTkFrame(self.organized, fg_color="transparent")
+            column.grid(row=0, column=column_index, sticky="new", padx=0, pady=0)
+            column.grid_columnconfigure(0, weight=1)
+            columns.append(column)
+
+        for index, card in enumerate(cards):
+            CollapsibleEvidenceCard(columns[index % 2], card).pack(
+                fill="x",
+                padx=8,
+                pady=8,
+            )
+
+    def update_content(
+        self,
+        heading: str,
+        body: str,
+        result: ComponentResult | None = None,
+    ) -> None:
         self.heading.configure(text=heading)
+        self.body = body
         _fill_console(self.console, body)
+        self._render_organized(result)
 
     def copy_evidence(self) -> None:
         self.clipboard_clear()
-        self.clipboard_append(self.console.get("1.0", "end-1c"))
+        self.clipboard_append(self.body)
 
 
 class ThermalDashboardWindow(ctk.CTkToplevel):
@@ -950,6 +1439,152 @@ class WindowsEventsWindow(ctk.CTkToplevel):
             ).grid(row=1, column=1, sticky="ew", padx=(0, 14), pady=(0, 10))
 
 
+class UpgradeAdvisorDialog(ctk.CTkToplevel):
+    """Formulario local para las verificaciones que Windows no puede observar."""
+
+    _ENTRY_FIELDS: tuple[tuple[str, str, str], ...] = (
+        ("Objetivo de uso", "goal", "Ej.: edición de vídeo a 1080p"),
+        ("Presupuesto total", "budget", "Ej.: 250"),
+        ("Moneda", "currency", "Ej.: HNL o USD"),
+        ("SSD: modelo/capacidad objetivo", "ssd_target", "Ej.: SSD 1 TB"),
+        ("SSD: capacidad objetivo", "ssd_target_capacity", "Ej.: 2 TB"),
+        ("SSD: protocolo objetivo", "ssd_target_protocol", "Ej.: NVMe"),
+        ("SSD: formato objetivo", "ssd_target_form_factor", "Ej.: M.2 2280"),
+        ("SSD: bahía/ranura libre", "ssd_available_bays_or_slots", "Ej.: M.2_2 libre"),
+        ("GPU objetivo (modelo/SKU)", "gpu_target", "Ej.: modelo exacto, no sólo familia"),
+        ("GPU: fuente mínima requerida (W)", "gpu_required_psu_watts", "Ej.: 550"),
+        ("GPU: conectores requeridos", "gpu_required_connectors", "Ej.: 1 × 8-pin"),
+        ("GPU: longitud (mm)", "gpu_length_mm", "Ej.: 300"),
+        ("Fuente instalada (W)", "gpu_current_psu_watts", "Ej.: 650"),
+        ("Conectores PCIe disponibles", "gpu_current_connectors", "Ej.: 2 × 8-pin"),
+        ("Espacio útil del gabinete (mm)", "gpu_clearance_mm", "Ej.: 320"),
+        ("GPU: ranura/restricción documentada", "gpu_pcie_slot_note", "Ej.: PCIe x16 disponible"),
+        ("GPU: manual/especificación", "gpu_manual_reference", "Modelo y enlace o código de manual"),
+    )
+
+    def __init__(
+        self,
+        master: Any,
+        preferences: UpgradePreferences,
+        on_save: Callable[[UpgradePreferences], None],
+    ) -> None:
+        super().__init__(master, fg_color=theme.BACKGROUND)
+        self.title("Configurar asesor de ampliaciones")
+        self.geometry("780x720")
+        self.minsize(600, 460)
+        self._on_save = on_save
+        self._entries: dict[str, Any] = {}
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(1, weight=1)
+        self.protocol("WM_DELETE_WINDOW", self.destroy)
+
+        header = ctk.CTkFrame(self, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=22, pady=(18, 10))
+        header.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            header,
+            text="DATOS PARA EL ASESOR DE AMPLIACIONES",
+            font=ctk.CTkFont(size=18, weight="bold"),
+            text_color=theme.TEXT,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(
+            header,
+            text=(
+                "Todo queda sólo en esta sesión. Windows no conoce ranuras libres, fuente ni espacio: "
+                "anote datos del manual o de una comprobación física."
+            ),
+            font=ctk.CTkFont(size=11),
+            text_color=theme.MUTED,
+            justify="left",
+            wraplength=650,
+        ).grid(row=1, column=0, sticky="w", pady=(4, 0))
+
+        body = ctk.CTkScrollableFrame(
+            self,
+            fg_color=theme.SURFACE,
+            border_width=1,
+            border_color=theme.BORDER,
+            corner_radius=10,
+        )
+        body.grid(row=1, column=0, sticky="nsew", padx=22, pady=(0, 12))
+        body.grid_columnconfigure(1, weight=1)
+        for row, (label, key, placeholder) in enumerate(self._ENTRY_FIELDS):
+            ctk.CTkLabel(
+                body,
+                text=label,
+                text_color=theme.TEXT,
+                font=ctk.CTkFont(size=12),
+                anchor="w",
+            ).grid(row=row, column=0, sticky="w", padx=(14, 10), pady=5)
+            entry = ctk.CTkEntry(body, placeholder_text=placeholder, height=30)
+            entry.grid(row=row, column=1, sticky="ew", padx=(0, 14), pady=5)
+            entry.insert(0, str(getattr(preferences, key)))
+            self._entries[key] = entry
+
+        option_row = len(self._ENTRY_FIELDS)
+        self._equipment_var = ctk.StringVar(value=preferences.equipment_form)
+        self._ram_soldered_var = ctk.StringVar(value=preferences.ram_soldered)
+        self._ssd_mode_var = ctk.StringVar(value=preferences.ssd_mode)
+        self._option(body, option_row, "Tipo de equipo", self._equipment_var, ("No indicado", "Sobremesa", "Portátil"))
+        self._option(body, option_row + 1, "RAM soldada", self._ram_soldered_var, ("No indicado", "No", "Sí"))
+        self._option(body, option_row + 2, "Plan SSD", self._ssd_mode_var, ("Añadir", "Reemplazar"))
+
+        footer = ctk.CTkFrame(self, fg_color="transparent")
+        footer.grid(row=2, column=0, sticky="ew", padx=22, pady=(0, 18))
+        footer.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(
+            footer,
+            text="Cancelar",
+            command=self.destroy,
+            width=112,
+            height=34,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+        ).grid(row=0, column=1, padx=(0, 8))
+        ctk.CTkButton(
+            footer,
+            text="Actualizar asesor",
+            command=self._save,
+            width=150,
+            height=34,
+            fg_color=theme.ACCENT,
+            hover_color=theme.ACCENT_HOVER,
+        ).grid(row=0, column=2)
+
+    @staticmethod
+    def _option(
+        master: Any,
+        row: int,
+        label: str,
+        variable: Any,
+        values: tuple[str, ...],
+    ) -> None:
+        ctk.CTkLabel(
+            master,
+            text=label,
+            text_color=theme.TEXT,
+            font=ctk.CTkFont(size=12),
+            anchor="w",
+        ).grid(row=row, column=0, sticky="w", padx=(14, 10), pady=5)
+        ctk.CTkOptionMenu(master, values=list(values), variable=variable, height=30).grid(
+            row=row, column=1, sticky="ew", padx=(0, 14), pady=5
+        )
+
+    def _save(self) -> None:
+        values = {key: str(entry.get()).strip() for key, entry in self._entries.items()}
+        values.update(
+            {
+                "equipment_form": self._equipment_var.get(),
+                "ram_soldered": self._ram_soldered_var.get(),
+                "ssd_mode": self._ssd_mode_var.get(),
+            }
+        )
+        self._on_save(UpgradePreferences(**values))
+        self.destroy()
+
+
 class HardwareAdminApp(ctk.CTk):
     def __init__(
         self,
@@ -967,6 +1602,7 @@ class HardwareAdminApp(ctk.CTk):
         self.worker_poll_job: str | None = None
         self.advanced_refresh_job: str | None = None
         self.report: DiagnosticReport | None = None
+        self.upgrade_preferences = UpgradePreferences()
         self.selected_component = ComponentKind.SYSTEM
         self.scan_running = False
         self.scan_scope: ComponentKind | None = None
@@ -1167,6 +1803,22 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_button.grid(row=3, column=0, sticky="ew", padx=16, pady=(0, 16))
         self.scan_button.bind("<Enter>", self._primary_button_enter)
         self.scan_button.bind("<Leave>", self._primary_button_leave)
+        self.reset_diagnostic_button = ctk.CTkButton(
+            sidebar,
+            text="LIMPIAR DIAGNÓSTICO",
+            image=self.icons.get("refresh", 16, theme.ACCENT_TEXT),
+            compound="left",
+            command=self.reset_diagnostic,
+            height=38,
+            corner_radius=8,
+            font=ctk.CTkFont(size=12, weight="bold"),
+            fg_color="transparent",
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.reset_diagnostic_button.grid(row=4, column=0, sticky="ew", padx=16, pady=(0, 16))
 
     def _build_content(self, master: Any) -> None:
         content = ctk.CTkFrame(master, corner_radius=0, fg_color=theme.BACKGROUND)
@@ -1315,8 +1967,61 @@ class HardwareAdminApp(ctk.CTk):
         )
         panel.grid(row=2, column=0, sticky="nsew")
         panel.grid_columnconfigure(0, weight=1)
-        panel.grid_rowconfigure(0, weight=1)
+        panel.grid_rowconfigure(1, weight=1)
         self.action_view = panel
+
+        self.advisor_controls = ctk.CTkFrame(panel, fg_color="transparent")
+        self.advisor_controls.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 0))
+        self.advisor_controls.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.advisor_controls,
+            text="Los datos declarados se conservan sólo hasta cerrar o limpiar el diagnóstico.",
+            text_color=theme.MUTED,
+            font=ctk.CTkFont(size=11),
+        ).grid(row=0, column=0, sticky="w")
+        self.advisor_configure_button = ctk.CTkButton(
+            self.advisor_controls,
+            text="Configurar datos",
+            command=self.open_upgrade_advisor_config,
+            width=130,
+            height=30,
+            corner_radius=8,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.advisor_configure_button.grid(row=0, column=1, padx=(8, 0))
+        self.advisor_controls.grid_remove()
+
+        # Cabecera de «Exportar diagnóstico»: la vista previa se lee antes de guardar.
+        self.export_controls = ctk.CTkFrame(panel, fg_color="transparent")
+        self.export_controls.grid(row=0, column=0, sticky="ew", padx=14, pady=(12, 0))
+        self.export_controls.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(
+            self.export_controls,
+            text="Vista previa del diagnóstico. Nada se guarda hasta pulsar «Exportar».",
+            text_color=theme.MUTED,
+            font=ctk.CTkFont(size=11),
+        ).grid(row=0, column=0, sticky="w")
+        self.export_confirm_button = ctk.CTkButton(
+            self.export_controls,
+            text="Exportar",
+            image=self.icons.get("save", 16, theme.ACCENT_TEXT),
+            compound="left",
+            command=self.export_report,
+            width=130,
+            height=30,
+            corner_radius=8,
+            fg_color=theme.SURFACE_ALT,
+            hover_color=theme.SURFACE_HOVER,
+            border_width=1,
+            border_color=theme.BORDER,
+            text_color=theme.ACCENT_TEXT,
+        )
+        self.export_confirm_button.grid(row=0, column=1, padx=(8, 0))
+        self.export_controls.grid_remove()
 
         self.action_text = ctk.CTkTextbox(
             panel,
@@ -1326,8 +2031,18 @@ class HardwareAdminApp(ctk.CTk):
             corner_radius=8,
             wrap="none",
         )
-        self.action_text.grid(row=0, column=0, sticky="nsew", padx=14, pady=14)
+        self.action_text.grid(row=1, column=0, sticky="nsew", padx=14, pady=14)
         self.action_text.configure(state="disabled")
+
+        self.advisor_cards_view = ctk.CTkScrollableFrame(
+            panel,
+            fg_color="transparent",
+            corner_radius=0,
+        )
+        self.advisor_cards_view.grid(row=1, column=0, sticky="nsew", padx=6, pady=(0, 8))
+        self.advisor_cards_view.grid_columnconfigure(0, weight=1, uniform="advisor-columns")
+        self.advisor_cards_view.grid_columnconfigure(1, weight=1, uniform="advisor-columns")
+        self.advisor_cards_view.grid_remove()
         panel.grid_remove()
 
     def _build_monitoring_panel(self, master: Any) -> None:
@@ -1573,7 +2288,7 @@ class HardwareAdminApp(ctk.CTk):
         ).grid(row=0, column=1, sticky="sw", pady=(16, 4))
         self.conclusion_label = ctk.CTkLabel(
             conclusion,
-            text="Analice una sección o el equipo completo para recopilar evidencia.",
+            text=INITIAL_CONCLUSION_TEXT,
             font=ctk.CTkFont(size=12),
             text_color=theme.TEXT,
             justify="left",
@@ -1718,10 +2433,8 @@ class HardwareAdminApp(ctk.CTk):
             self.show_connectivity()
         elif action == "recommendations":
             self.show_recommendations()
-        elif action == "report":
-            self.show_report()
         elif action == "export":
-            self.export_report()
+            self.show_export_preview()
         elif action == "advanced":
             self.show_advanced()
 
@@ -1735,10 +2448,28 @@ class HardwareAdminApp(ctk.CTk):
             panel.grid_remove()
         self.workspace.grid_remove()
         self.action_view.grid()
+        self.advisor_controls.grid_remove()
+        self.export_controls.grid_remove()
+        self.advisor_cards_view.grid_remove()
+        self.action_text.grid()
         self.action_text.configure(state="normal")
         self.action_text.delete("1.0", "end")
         self.action_text.insert("1.0", body)
         self.action_text.configure(state="disabled")
+
+    def _render_upgrade_advisor_cards(self, recommendations: Sequence[Any]) -> None:
+        """Apila cada columna de forma independiente, igual que la evidencia de controladores."""
+        for child in self.advisor_cards_view.winfo_children():
+            child.destroy()
+        advice = self.report.upgrade_advice if self.report else {}
+        columns: list[ctk.CTkFrame] = []
+        for index in range(2):
+            column = ctk.CTkFrame(self.advisor_cards_view, fg_color="transparent")
+            column.grid(row=0, column=index, sticky="new")
+            column.grid_columnconfigure(0, weight=1)
+            columns.append(column)
+        for index, card in enumerate(upgrade_advisor_cards(advice, recommendations)):
+            CollapsibleEvidenceCard(columns[index % 2], card).pack(fill="x", padx=8, pady=8)
 
     @staticmethod
     def _format_battery_eta(seconds: float | None) -> str:
@@ -1822,13 +2553,13 @@ class HardwareAdminApp(ctk.CTk):
         self.action_text.configure(state="disabled")
         self.advanced_refresh_job = self.after(10000, self._refresh_advanced_view)
 
-    def show_report(self) -> None:
-        """Vista del reporte completo. No guarda nada: eso es «Exportar»."""
+    def show_export_preview(self) -> None:
+        """Vista previa del diagnóstico antes de exportar. No guarda nada por sí sola."""
         report = self.report
         if report is None:
             self._show_action_view(
-                "report",
-                "REPORTE DE DIAGNÓSTICO",
+                "export",
+                "EXPORTAR DIAGNÓSTICO",
                 "Todavía no hay diagnóstico." + NL + NL
                 + "Ejecute «Analizar equipo» o el análisis de una sección concreta.",
             )
@@ -1866,14 +2597,17 @@ class HardwareAdminApp(ctk.CTk):
             for number, item in enumerate(report.recommendations, start=1):
                 marca = " (modifica el sistema)" if item.modifies_system else ""
                 lines.append(f"  {number}. {item.title}{marca}")
+        if report.upgrade_advice:
+            lines.extend(["", format_upgrade_advice(report.upgrade_advice)])
 
         lines.extend(
             [
                 "",
-                "Use «15. Exportar diagnóstico» para guardar este reporte en disco.",
+                "Pulse «Exportar» para guardar este diagnóstico en disco."
             ]
         )
-        self._show_action_view("report", "REPORTE DE DIAGNÓSTICO", NL.join(lines))
+        self._show_action_view("export", "EXPORTAR DIAGNÓSTICO", NL.join(lines))
+        self.export_controls.grid()
 
     def show_connectivity(self) -> None:
         """Etapas de conectividad ya medidas por el servicio, sin volver a probar."""
@@ -1924,37 +2658,67 @@ class HardwareAdminApp(ctk.CTk):
         self._show_action_view("connectivity", "CONECTIVIDAD", "\n".join(lines))
 
     def show_recommendations(self) -> None:
-        """Todos los procedimientos propuestos, ordenados por gravedad."""
+        """Procedimientos del diagnóstico y asesores locales de ampliación."""
         recommendations = self.report.recommendations if self.report else ()
-        if not recommendations:
+        if self.report is None:
             self._show_action_view(
                 "recommendations",
                 "RECOMENDACIONES",
-                "No hay recomendaciones.\n\n"
-                "No se detectaron anomalías en los indicadores consultados ni se "
-                "registró un síntoma. Esto no equivale a afirmar que el hardware "
-                "esté libre de fallas: sólo que las comprobaciones realizadas no "
-                "encontraron anomalías.",
+                "Aún no hay diagnóstico.\n\nEjecute «Analizar equipo» para que el asesor "
+                "de RAM, SSD, GPU y prioridad use el inventario local de esta sesión.",
             )
             return
 
         lines = ["RECOMENDACIONES", "===============", ""]
-        for number, item in enumerate(recommendations, start=1):
-            lines.append(f"{number}. {item.title}  [{item.component.value}]")
-            lines.append(f"   Causa: {item.cause}")
-            lines.append("")
-            lines.append("   Pasos:")
-            lines.extend(f"     {index}. {step}" for index, step in enumerate(item.steps, 1))
-            lines.extend(["", f"   Fundamento: {item.rationale}"])
-            lines.append(f"   Comprobación posterior: {item.verification}")
-            lines.append(
-                "   ! MODIFICA EL SISTEMA: la aplicación no ejecuta este "
-                "procedimiento; lo aplica usted."
-                if item.modifies_system
-                else "   Sólo consulta: no altera el equipo."
+        if recommendations:
+            for number, item in enumerate(recommendations, start=1):
+                lines.append(f"{number}. {item.title}  [{item.component.value}]")
+                lines.append(f"   Causa: {item.cause}")
+                lines.append("")
+                lines.append("   Pasos:")
+                lines.extend(f"     {index}. {step}" for index, step in enumerate(item.steps, 1))
+                lines.extend(["", f"   Fundamento: {item.rationale}"])
+                lines.append(f"   Comprobación posterior: {item.verification}")
+                lines.append(
+                    "   ! MODIFICA EL SISTEMA: la aplicación no ejecuta este "
+                    "procedimiento; lo aplica usted."
+                    if item.modifies_system
+                    else "   Sólo consulta: no altera el equipo."
+                )
+                lines.append("")
+        else:
+            lines.extend(
+                [
+                    "No se detectaron recomendaciones correctivas en esta sesión.",
+                    "Esto no certifica que el hardware esté libre de fallas.",
+                    "",
+                ]
             )
-            lines.append("")
+        lines.extend([format_upgrade_advice(self.report.upgrade_advice), ""])
         self._show_action_view("recommendations", "RECOMENDACIONES", "\n".join(lines))
+        self.advisor_controls.grid()
+        self.action_text.grid_remove()
+        self._render_upgrade_advisor_cards(recommendations)
+        self.advisor_cards_view.grid()
+
+    def open_upgrade_advisor_config(self) -> None:
+        """Pide la evidencia física/documental que Windows no puede medir."""
+        if self.report is None:
+            return
+        window = UpgradeAdvisorDialog(self, self.upgrade_preferences, self._save_upgrade_preferences)
+        self._present_child_window(window)
+
+    def _save_upgrade_preferences(self, preferences: UpgradePreferences) -> None:
+        self.upgrade_preferences = preferences
+        self._refresh_upgrade_advice()
+        self.show_recommendations()
+
+    def _refresh_upgrade_advice(self) -> None:
+        """Actualiza sólo las fichas de sesión; no dispara consultas ni acciones externas."""
+        if self.report is None:
+            return
+        advice = build_upgrade_advice(self.report.results, self.upgrade_preferences)
+        self.report = replace(self.report, upgrade_advice=advice)
 
     def _highlight_nav(self, active_key: str) -> None:
         """Ilumina la entrada activa del menú, sea componente o acción.
@@ -2047,6 +2811,7 @@ class HardwareAdminApp(ctk.CTk):
         self._animate_refresh_icon()
         self.scan_button.configure(text="ANALIZANDO...", state="disabled")
         self.section_button.configure(state="disabled")
+        self.reset_diagnostic_button.configure(state="disabled")
         self.symptom_entry.configure(state="disabled")
         self._set_global_status("busy", "Analizando")
         self.progress_label.configure(text="Iniciando comprobaciones...")
@@ -2105,12 +2870,14 @@ class HardwareAdminApp(ctk.CTk):
             self.results_by_kind[result.component] = result
             self.matrix.update_result(result)
         self.report = self._merged_report()
+        self._refresh_upgrade_advice()
         # Refrescar el panel visible: sin esto los graficos seguirian mostrando
         # el analisis anterior hasta que el usuario cambiara de apartado.
         self._draw_section_charts(self.selected_component)
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.reset_diagnostic_button.configure(state="normal")
         self.symptom_entry.configure(state="normal")
 
         checks = len(report.results)
@@ -2161,10 +2928,38 @@ class HardwareAdminApp(ctk.CTk):
         self.scan_running = False
         self.scan_button.configure(text="ANALIZAR EQUIPO", state="normal")
         self.section_button.configure(state="normal")
+        self.reset_diagnostic_button.configure(state="normal")
         self.symptom_entry.configure(state="normal")
         self._set_global_status("error", "Error")
         self.progress_label.configure(text="El análisis no pudo completarse")
         messagebox.showerror("Error de análisis", f"No fue posible completar el análisis:\n{error}")
+
+    def reset_diagnostic(self) -> None:
+        """Descarta sólo la sesión actual para comenzar un diagnóstico nuevo.
+
+        No borra reportes ya exportados ni las muestras de monitorización: ambas
+        son recursos distintos del diagnóstico de componentes.
+        """
+        if self.scan_running:
+            return
+        self.report = None
+        self.upgrade_preferences = UpgradePreferences()
+        self.results_by_kind.clear()
+        self.scan_scope = None
+        self.symptom_var.set("")
+        self.matrix.reset()
+        for card in self.cards.values():
+            card.reset()
+        self.battery_card.reset()
+        for component in self.section_panels:
+            self._draw_section_charts(component)
+        self._set_global_status("idle", "Sin analizar")
+        self.last_scan_label.configure(text="Último análisis: —")
+        self.progress_label.configure(text="Diagnóstico restablecido")
+        self.conclusion_label.configure(text=INITIAL_CONCLUSION_TEXT)
+        self._refresh_thermal_dashboard()
+        self._refresh_windows_events()
+        self._show_selected_evidence()
 
     def _update_cards(self) -> None:
         for kind, card in self.cards.items():
@@ -2220,11 +3015,23 @@ class HardwareAdminApp(ctk.CTk):
         window = self.thermal_window
         if window is not None and window.winfo_exists():
             window.update_rows(rows)
-            window.deiconify()
-            window.lift()
-            window.focus()
+            self._present_child_window(window)
             return
         self.thermal_window = ThermalDashboardWindow(self, rows)
+        self._present_child_window(self.thermal_window)
+
+    def _present_child_window(self, window: ctk.CTkToplevel) -> None:
+        """Muestra una ventana hija delante de su aplicación sin hacerla modal."""
+        window.deiconify()
+        window.transient(self)
+        window.lift()
+        window.focus_force()
+        # En Windows, `lift` durante el primer mapeo puede perderse frente a la
+        # ventana principal. Elevarla brevemente fuerza el orden correcto y al
+        # soltarlo conserva el comportamiento normal de una ventana hija.
+        window.attributes("-topmost", True)
+        window.update_idletasks()
+        window.attributes("-topmost", False)
 
     def _refresh_thermal_dashboard(self) -> None:
         rows = thermal_dashboard_rows(self.results_by_kind)
@@ -2240,11 +3047,10 @@ class HardwareAdminApp(ctk.CTk):
         window = self.windows_events_window
         if window is not None and window.winfo_exists():
             window.update_events(events)
-            window.deiconify()
-            window.lift()
-            window.focus()
+            self._present_child_window(window)
             return
         self.windows_events_window = WindowsEventsWindow(self, events)
+        self._present_child_window(self.windows_events_window)
 
     def _get_windows_events(self) -> list[dict[str, Any]]:
         sys_res = self.results_by_kind.get(ComponentKind.SYSTEM)
@@ -2284,16 +3090,8 @@ class HardwareAdminApp(ctk.CTk):
             f"ESTADO: {STATUS_LABELS[result.status]}",
             f"RESUMEN: {result.summary}",
             "",
-            "DATOS NORMALIZADOS",
-            "-------------------",
+            format_normalized_facts(result.component, result.facts),
         ]
-        for key, value in result.facts.items():
-            # Series numericas para los graficos: no son texto de la ficha.
-            if str(key).startswith("_"):
-                continue
-            lines.append(f"{key}:")
-            lines.append(_format_value(value, "  "))
-            lines.append("")
         # Recomendaciones del componente seleccionado, antes de la evidencia cruda.
         applicable = [
             item
@@ -2359,22 +3157,29 @@ class HardwareAdminApp(ctk.CTk):
         """Abre la evidencia del componente seleccionado a pantalla completa."""
         heading = self.console_context.cget("text")
         body = self.console.get("1.0", "end-1c")
+        result = self.results_by_kind.get(self.selected_component)
         window = self.evidence_window
         if window is not None and window.winfo_exists():
-            window.update_content(heading, body)
+            window.update_content(heading, body, result)
             window.deiconify()
             window.lift()
             window.focus()
             return
         self.evidence_window = EvidenceWindow(
-            self, heading, body, self.icons.get("expand", 17, theme.ACCENT_TEXT)
+            self,
+            heading,
+            body,
+            self.icons.get("expand", 17, theme.ACCENT_TEXT),
+            result,
         )
 
     def _sync_evidence_window(self) -> None:
         window = self.evidence_window
         if window is not None and window.winfo_exists():
             window.update_content(
-                self.console_context.cget("text"), self.console.get("1.0", "end-1c")
+                self.console_context.cget("text"),
+                self.console.get("1.0", "end-1c"),
+                self.results_by_kind.get(self.selected_component),
             )
 
     def copy_evidence(self) -> None:

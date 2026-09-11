@@ -23,7 +23,10 @@ Estado: diseño, no implementación; IA opcional y sin DB propia para el prototi
 La IA complementa las reglas verificables del producto.
 
 La [ampliación del asesor](docs/architecture/09-diagnostic-advisor.md) define los
-slices E1–E8, todos NO INICIADOS, sus contratos, módulos, pruebas y recuperación.
+slices E1–E8, sus contratos, módulos, pruebas y recuperación. E2/E4/E7/E8 tienen
+una integración local **PARCIAL** autorizada el 2026-09-11: inventario de sesión,
+reglas de abstención y datos documentales declarados; siguen pendientes fuentes OEM,
+SKU, validación física y sus gates completos. E1/E3/E5/E6 permanecen NO INICIADOS.
 Incluye «¿Por qué?», «Antes de comprar», «¿Se solucionó?», comparación de reportes,
 exportación depurada y revisión de refresco. Mantiene maqueta, menú y ausencia de DB.
 P23 incorpora candidatos concretos de GPU en E4–E5, ajustados a uso y presupuesto,
@@ -70,7 +73,7 @@ contrastarse con las pruebas del commit que vaya a distribuirse.
 
 | Área | Estado alcanzado | Pendiente |
 |---|---|---|
-| Interfaz | 15 apartados más Salir, análisis general/sección, consola, síntoma | — |
+| Interfaz | 14 apartados más Avanzado, análisis general/sección, consola, síntoma | — |
 | CPU | Modelo, núcleos, medidor y barras por núcleo; umbrales 70/90 | — |
 | RAM | Total/disponible/uso, gráfico de asignación; umbrales 70/90 | — |
 | Discos | Get-PhysicalDisk/Get-Volume, asociación por Get-Partition, tipo de medio | — |
@@ -120,7 +123,7 @@ src/hardware_admin/
     json_report.py              esquema versionado, identidad omitible
     txt_report.py               texto plano legible sin herramientas
   ui/
-    main_window.py              ventana, menú de 15 apartados y paneles
+    main_window.py              ventana, menú de 14 apartados y paneles
     charts.py                   series de tiempo, medidor y barras
     theme.py, icons.py          paleta e iconos vectoriales
 docs/
@@ -188,8 +191,7 @@ Un síntoma persistente obliga a proponer diagnóstico adicional aunque todo fig
 11. Conectividad.
 12. Monitorización.
 13. Recomendaciones.
-14. Generar reporte: vista del reporte completo.
-15. Exportar diagnóstico: guardar JSON/TXT y conservar HTML.
+14. Exportar diagnóstico: vista previa del reporte y guardado en HTML/JSON/TXT.
 0. Salir: cierre ordenado de tareas y ventana.
 
 La entrada será mediante botones, selección y síntoma opcional. No es requisito
@@ -286,7 +288,7 @@ intervención humana y se detallan al final de la tabla.
 | 4D | Menú de 15 opciones y Salir — **COMPLETADA** | 16 entradas; Conectividad y Recomendaciones propias; ver ≠ exportar; cierre ordenado; gates en verde | Volver a la navegación de 12 |
 | 5 | reports JSON/TXT — **COMPLETADA** | schema_version 1.0, UTF-8, equipo/usuario omitibles, cobertura, límites y recomendaciones; gates en verde | HTML anterior intacto |
 | 6 | Documentación de producto — **COMPLETADA** (pruebas reales pendientes de ejecutar) | Guía de uso, notas de versión, límites, licencias, política de datos, soporte y protocolo PR-01…PR-18 | Documentación versionada |
-| 7 | packaging, distribución, README — **COMPLETADA** (validación en equipo limpio pendiente) | EXE con runtime propio y Tcl/Tk 8.6.15, ZIP con LEEME/CHANGELOG/licencias y huella SHA-256 `a28f6818…`; doble `--smoke-test` con código 0 en `dist` y en el ZIP extraído | Última versión verificada |
+| 7 | packaging, distribución, README — **COMPLETADA** (validación en equipo limpio pendiente) | EXE con runtime propio y Tcl/Tk 8.6.15, ZIP con LEEME/CHANGELOG/licencias y huella SHA-256 `37cb5b94…`; doble `--smoke-test` con código 0 en `dist` y en el ZIP extraído | Última versión verificada |
 
 ### Especificación técnica del apartado de gráficos (Fase 4)
 
@@ -322,14 +324,20 @@ Windows ni reinterpreta porcentajes, de modo que una recomendación no puede
 contradecir la matriz. Un equipo sin anomalías y sin síntoma no genera ninguna.
 Diseño en [docs/superpowers](docs/superpowers/specs/2026-09-05-recomendaciones-design.md).
 
-La **4D** completa el menú: 15 apartados más Salir. Cuatro entradas no
+La **4D** completa el menú: 14 apartados más Avanzado. Cuatro entradas no
 corresponden a ningún componente —Conectividad, Recomendaciones, Exportar y
-Salir—, así que `NAV_ITEMS` pasa a declarar componente **o** acción, nunca ambos.
+Avanzado—, así que `NAV_ITEMS` pasa a declarar componente **o** acción, nunca ambos.
 
 Conectividad y Recomendaciones no miden nada nuevo: presentan las etapas que ya
-produce `ConnectivityService` y los procedimientos de la 4C. «14. Generar
-reporte» **muestra** el reporte completo y «15. Exportar diagnóstico» lo
-**guarda**; son acciones distintas, como pide el enunciado.
+produce `ConnectivityService` y los procedimientos de la 4C.
+
+**Revisión posterior.** El enunciado original separaba «Generar reporte»
+(mostrar) de «Exportar diagnóstico» (guardar) en dos apartados. Se fusionaron
+en uno solo: «14. Exportar diagnóstico» presenta la vista previa completa del
+reporte y sólo guarda cuando se pulsa «Exportar». La distinción entre ver y
+guardar se conserva —nada se escribe en disco por abrir el apartado—, pero deja
+de ocupar dos entradas de menú para la misma información. El apartado «0. Salir»
+fue sustituido antes por «0. Avanzado».
 
 **La fase 4 queda completa.**
 

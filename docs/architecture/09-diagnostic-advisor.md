@@ -1,6 +1,6 @@
 # Asesor de diagnóstico, ampliación y solución guiada
 
-Fecha: 2026-09-04. Estado: **DISEÑO APROBADO PARA PLANIFICACIÓN; NO IMPLEMENTADO**.
+Fecha: 2026-09-04. Estado: **DISEÑO APROBADO; implementación local parcial de E2/E4/E7/E8 el 2026-09-11**.
 Complementa [BUILD_PLAN.md](../../BUILD_PLAN.md) y la
 [investigación](../RESEARCH_AI_HARDWARE.md). No cambia el estado de la Fase 1.
 Alcance focalizado: ampliar el monolito existente, sin DB y sin reparación automática.
@@ -241,7 +241,16 @@ fallo de cierre sin detener procesos ajenos. Medir sobrecarga, no asumir impacto
 Ejecutar IA local después del muestreo. Permiso insuficiente desactiva el adaptador;
 no cambiar grupos, instalar servicios ni elevar privilegios automáticamente.
 
-## Slices posteriores: todos NO INICIADOS
+## Slices posteriores
+
+Por autorización del propietario del 2026-09-11, E2/E4/E7/E8 disponen de una
+primera integración local común: reglas puras en `services/upgrade_advisor.py`,
+formulario de datos documentales voluntarios en la sesión, ficha en
+«Recomendaciones» y exportación voluntaria. No reordena ni completa los slices:
+no busca fuentes, precios ni SKU en Internet; una comprobación no documentada es
+`PENDIENTE DE VERIFICACIÓN`; y no hay compra ni cambio del equipo. E1, E3, E5 y
+E6 permanecen no iniciados. Las validaciones físicas, fuentes OEM/SKU y criterios
+de aceptación de cada fila siguen pendientes.
 
 Las fases 0–7 siguen siendo el plan base. E identifica ampliaciones funcionales;
 I1–I5 en investigación siguen siendo integración/evaluación de IA, no nuevas fases base.
@@ -249,13 +258,13 @@ I1–I5 en investigación siguen siendo integración/evaluación de IA, no nueva
 | Slice y dependencia | Resultado vertical / módulos | Prueba de aceptación | Recuperación |
 |---|---|---|---|
 | E1, tras 2–5 | Guía por síntoma, evidencia, «antes de comprar»; troubleshooting + rules + UI/reporte | C1–C5, USB sin volumen, ICMP bloqueado, evento 41 aislado; sin reparación automática | Desactivar guía, conservar escaneo |
-| E2, tras E1 e inventario I1 | RAM instalada/máximo/configuración; memory_advisor + compatibility + UI/reporte | Soldada, ranuras ambiguas, límites contradictorios, kit/reemplazo; abstención sin manual | Mostrar inventario básico |
+| E2, tras E1 e inventario I1 | **PARCIAL:** RAM instalada y abstención documentada; falta máximo OEM/configuración verificada | Soldada, ranuras ambiguas, límites contradictorios, kit/reemplazo; abstención sin manual | Mostrar inventario básico |
 | E3, tras E1 y JSON fase 5 | Antes/después, cambios y copia compartible; comparison + redaction + UI | Versiones incompatibles, contexto distinto, JSON malicioso, originales intactos y sin datos prohibidos | Mantener exportación previa; no migrar originales |
-| E4, tras fase 3 y E2 | Compatibilidad GPU; gpu_advisor + UI/reporte | Fuente/espacio desconocidos, conector incorrecto, portátil no ampliable; pendiente != incompatible | Inventario GPU básico |
+| E4, tras fase 3 y E2 | **PARCIAL:** fuente/espacio/conector declarados; faltan SKU/fuentes verificadas | Fuente/espacio desconocidos, conector incorrecto, portátil no ampliable; pendiente != incompatible | Inventario GPU básico |
 | E5, tras E4 y monitorización fase 4 | Rendimiento por sesión; capture + performance + UI/reporte | FPS limitado, hilo CPU saturado, GPU limitada, sensores ausentes, cancelar/timeout; no porcentaje universal | Adaptador nulo y resultado no concluyente |
 | E6, tras fase 3 | Revisión de refresco; display_modes + reglas + UI/reporte | Multimonitor, resolución distinta, sin modos disponibles; ningún cambio automático | Ocultar sugerencia, conservar monitor/GPU |
-| E7, tras fase 3 y E2 | Asesor SSD; storage_advisor + compatibility + UI/reporte | M.2 con protocolo distinto, ranura no verificada, añadir/reemplazar, accesorio/precio desconocidos; sin migración automática | Inventario almacenamiento básico |
-| E8, tras E2–E5 y E7 | Prioridad de ampliación y ficha común; upgrade_planner + UI/reporte | Presupuesto insuficiente, costes adicionales, sin evidencia de beneficio y opción no comprar; reutilizar asesores | Mostrar recomendaciones por componente |
+| E7, tras fase 3 y E2 | **PARCIAL:** protocolo/formato/bahía declarados; falta fuente OEM y comprobación física | M.2 con protocolo distinto, ranura no verificada, añadir/reemplazar, accesorio/precio desconocidos; sin migración automática | Inventario almacenamiento básico |
+| E8, tras E2–E5 y E7 | **PARCIAL:** prioridad de comprobaciones locales y opción no comprar; falta rendimiento/costes verificables | Presupuesto insuficiente, costes adicionales, sin evidencia de beneficio y opción no comprar; reutilizar asesores | Mostrar recomendaciones por componente |
 
 E1 añade cambios declarados y criterios de parada P28; E2 añade P26 (unidades,
 perfil frente a configuración, datos ausentes); E3 verifica ampliaciones P18

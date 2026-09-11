@@ -64,6 +64,13 @@ E1–E8 se implementan respetando sus dependencias escritas: E1, E2, E3, E4,
 E5, E6, E7, E8. No adelantar E5 sin la evidencia de sensores/F3 y monitoreo
 estable; no adelantar E2/E4/I2 sin fuentes de modelo/SKU verificables.
 
+Excepción registrada: el propietario autorizó el 2026-09-11 una integración
+local **PARCIAL** de E2/E4/E7/E8 para orientar comprobaciones sin compras. No
+altera la dependencia para declarar estos slices completos: usa sólo inventario
+de la sesión y datos documentales introducidos por el usuario, marca datos
+ausentes como `PENDIENTE DE VERIFICACIÓN` y conserva pendientes fuentes OEM,
+SKU, validación física y los gates de aceptación completos.
+
 ## Procedimiento obligatorio por fase
 
 1. Declarar el ID de fase exacto y repetir su alcance, fuera de alcance,

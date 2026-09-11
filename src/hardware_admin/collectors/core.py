@@ -292,6 +292,32 @@ class SystemCollector:
             facts["Bluetooth"] = "No disponible o no consultable"
             facts["Cámara web"] = "No disponible o no consultable"
 
+        # 4b. Ranuras del sistema (Win32_SystemSlot)
+        slot_result = self.runner.run(PowerShellQuery.SYSTEM_SLOTS)
+        slot_rows = parse_json_rows(slot_result)
+        if slot_rows:
+            slots_list: list[dict[str, Any]] = []
+            for sr in slot_rows:
+                designation = str(sr.get("SlotDesignation") or "Ranura").strip()
+                current_usage = str(sr.get("CurrentUsage") or "No disponible").strip()
+                status = str(sr.get("Status") or "No disponible").strip()
+                width = str(sr.get("MaxDataWidth") or "").strip()
+                desc = str(sr.get("Description") or "").strip()
+                slots_list.append(
+                    {
+                        "Ranura": designation,
+                        "Uso actual": current_usage,
+                        "Estado": status,
+                        "Ancho": width or "No disponible",
+                        "Descripción": desc or "No disponible",
+                    }
+                )
+            facts["Ranuras del sistema (Win32_SystemSlot)"] = slots_list
+        else:
+            facts["Ranuras del sistema (Win32_SystemSlot)"] = (
+                "No reportadas por el firmware o incompletas en este equipo"
+            )
+
         # 5. Telemetría térmica general del equipo (Fase F3)
         if self.thermal_provider is not None:
             try:
@@ -383,6 +409,15 @@ class SystemCollector:
                     "Get-CimInstance Win32_Battery / Win32_PowerPlan",
                     batt_result.output or batt_result.error,
                     batt_result.exit_code == 0,
+                )
+            )
+        if slot_result.output or slot_result.error:
+            evidence.append(
+                _evidence(
+                    "PowerShell (System Slots)",
+                    "Get-CimInstance Win32_SystemSlot",
+                    slot_result.output or slot_result.error,
+                    slot_result.exit_code == 0,
                 )
             )
 
@@ -543,14 +578,30 @@ _SMBIOS_MEMORY_TYPES: dict[int, str] = {
 }
 
 _FORM_FACTORS: dict[int, str] = {
+    0: "Desconocido",
+    1: "Otro",
+    2: "SIP",
+    3: "DIP",
+    4: "ZIP",
+    5: "SOJ",
+    6: "Propietario",
+    7: "SIMM",
     8: "DIMM",
+    9: "TSOP",
+    10: "PGA",
+    11: "RIMM",
     12: "SODIMM",
     13: "SRIMM",
     14: "SMD",
-    15: "SIMM",
-    16: "PIM",
-    17: "RIMM",
-    18: "SO-DIMM",
+    15: "SSMP",
+    16: "QFP",
+    17: "TQFP",
+    18: "SOIC",
+    19: "LCC",
+    20: "PLCC",
+    21: "BGA",
+    22: "FPBGA",
+    23: "LGA",
 }
 
 
@@ -655,13 +706,65 @@ class MemoryCollector:
             facts["Módulos físicos"] = "No reportados por el firmware SMBIOS"
             facts["Límite de ampliación"] = "No determinado sin inventario SMBIOS (Asesor E2)"
 
+        # Consulta de arreglo de memoria física (Win32_PhysicalMemoryArray)
+        array_result = self.runner.run(PowerShellQuery.PHYSICAL_MEMORY_ARRAY)
+        array_rows = parse_json_rows(array_result)
+        if array_rows:
+            a_row = array_rows[0]
+            max_raw = a_row.get("MaxCapacityEx")
+            if max_raw is None:
+                max_raw = a_row.get("MaxCapacity")
+            slots_raw = a_row.get("MemoryDevices")
+            max_bytes = None
+            if max_raw is not None:
+                try:
+                    max_kb = float(max_raw)
+                    max_bytes = int(max_kb * 1024)
+                except (ValueError, TypeError):
+                    max_bytes = None
+
+            slots_count = None
+            if slots_raw is not None:
+                try:
+                    slots_count = int(slots_raw)
+                except (ValueError, TypeError):
+                    slots_count = None
+
+            facts["_ampliacion_ram"] = {
+                "maximo_firmware_bytes": max_bytes,
+                "ranuras_totales": slots_count,
+                "ranuras_ocupadas": len(raw_modules) if raw_modules else 0,
+            }
+            if max_bytes is not None:
+                facts["Máximo RAM reportado por firmware"] = format_bytes(max_bytes)
+                margin = max_bytes - memory.total
+                facts["_ampliacion_ram"]["margen_teorico_bytes"] = margin
+                facts["Margen teórico de ampliación RAM"] = format_bytes(max(0, margin))
+            else:
+                facts["Máximo RAM reportado por firmware"] = "No reportado por firmware"
+                facts["Margen teórico de ampliación RAM"] = "No determinado"
+
+            if slots_count is not None:
+                facts["Ranuras RAM reportadas por firmware"] = slots_count
+                free_slots = max(0, slots_count - (len(raw_modules) if raw_modules else 0))
+                facts["Ranuras RAM libres teóricas"] = free_slots
+            else:
+                facts["Ranuras RAM reportadas por firmware"] = "No reportadas"
+                facts["Ranuras RAM libres teóricas"] = "No determinadas"
+        else:
+            facts["Máximo RAM reportado por firmware"] = "No reportado por firmware"
+            facts["Margen teórico de ampliación RAM"] = "No determinado"
+            facts["Ranuras RAM reportadas por firmware"] = "No reportadas"
+            facts["Ranuras RAM libres teóricas"] = "No determinadas"
+
         status = MEMORY_RULE.classify(memory.percent)
         problem = "Poca memoria disponible" if status is not HealthStatus.NORMAL else None
         output = (
             "psutil.virtual_memory()\n"
             f"total={memory.total}, available={memory.available}, "
             f"used={memory.used}, percent={memory.percent}\n\n"
-            f"Get-CimInstance Win32_PhysicalMemory:\n{phys_result.output or phys_result.error}"
+            f"Get-CimInstance Win32_PhysicalMemory:\n{phys_result.output or phys_result.error}\n\n"
+            f"Get-CimInstance Win32_PhysicalMemoryArray:\n{array_result.output or array_result.error}"
         )
 
         evidence = [
@@ -674,6 +777,15 @@ class MemoryCollector:
                     "Get-CimInstance Win32_PhysicalMemory",
                     phys_result.output or phys_result.error,
                     phys_result.exit_code == 0,
+                )
+            )
+        if array_result.output or array_result.error:
+            evidence.append(
+                _evidence(
+                    "PowerShell (PhysicalMemoryArray)",
+                    "Get-CimInstance Win32_PhysicalMemoryArray",
+                    array_result.output or array_result.error,
+                    array_result.exit_code == 0,
                 )
             )
 

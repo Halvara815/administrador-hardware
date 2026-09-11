@@ -9,6 +9,7 @@ from typing import Any
 from hardware_admin import __version__
 from hardware_admin.domain.models import DiagnosticReport, HealthStatus
 from hardware_admin.reports._logging import log_export
+from hardware_admin.services.upgrade_advisor import format_upgrade_advice
 
 _STATUS_LABELS = {
     HealthStatus.UNKNOWN: "Sin analizar",
@@ -77,6 +78,12 @@ def export_html(report: DiagnosticReport, destination: str | Path) -> Path:
         if recommendation_blocks
         else ""
     )
+    advisor_section = (
+        "<section><h2>Asesor de ampliaciones</h2><pre>"
+        f"{html.escape(format_upgrade_advice(report.upgrade_advice))}</pre></section>"
+        if report.upgrade_advice
+        else ""
+    )
 
     detail_sections = []
     for result in report.results:
@@ -139,6 +146,7 @@ article h3{{margin:0 0 8px;color:#0b5fc6}} article ol{{margin:8px 0;padding-left
 <section class="conclusion"><h2>Conclusión</h2><p>{html.escape(report.conclusion)}</p></section>
 {context_section}
 {recommendation_section}
+{advisor_section}
 {f"<section><h2>Limitaciones</h2><ul>{limitations}</ul></section>" if limitations else ""}
 {"".join(detail_sections)}
 </main></body></html>"""

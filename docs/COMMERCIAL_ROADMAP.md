@@ -53,7 +53,7 @@ suscripciones en línea, inventario centralizado, historial consultable o múlti
 Las siguientes capacidades existentes se consideran la línea base y deben conservarse:
 
 - Ventana gráfica sin consola externa.
-- Navegación por los 15 apartados del proyecto más Salir.
+- Navegación por los 14 apartados del proyecto más Avanzado.
 - Análisis completo o por sección sin bloquear la interfaz.
 - Recolección de sistema, CPU, RAM, discos, red, USB, PCI/PCIe, controladores,
   dispositivos con problemas, monitor/GPU y E/S.

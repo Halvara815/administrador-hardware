@@ -31,9 +31,11 @@ class PowerShellQuery(StrEnum):
     BATTERY_INFO = "battery_info"
     FIRMWARE_INFO = "firmware_info"
     PHYSICAL_MEMORY_MODULES = "physical_memory_modules"
+    PHYSICAL_MEMORY_ARRAY = "physical_memory_array"
     PERIPHERALS_EXTENDED = "peripherals_extended"
     THERMAL_ZONE = "thermal_zone"
     CRITICAL_EVENTS = "critical_events"
+    SYSTEM_SLOTS = "system_slots"
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +228,14 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
     PowerShellQuery.PHYSICAL_MEMORY_MODULES: """
         $data = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Select-Object `
             BankLabel,DeviceLocator,Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber,FormFactor,MemoryType,SMBIOSMemoryType)
+    """,
+    PowerShellQuery.PHYSICAL_MEMORY_ARRAY: """
+        $data = @(Get-CimInstance Win32_PhysicalMemoryArray -ErrorAction SilentlyContinue | Select-Object `
+            MaxCapacityEx,MemoryDevices,Use,Location)
+    """,
+    PowerShellQuery.SYSTEM_SLOTS: """
+        $data = @(Get-CimInstance Win32_SystemSlot -ErrorAction SilentlyContinue | Select-Object `
+            SlotDesignation,CurrentUsage,Status,MaxDataWidth,Description)
     """,
     PowerShellQuery.PERIPHERALS_EXTENDED: """
         $classes = @('Bluetooth', 'Media', 'Camera', 'Image', 'Keyboard', 'Mouse')

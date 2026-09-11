@@ -263,6 +263,7 @@ def build_payload(
             }
             for item in report.recommendations
         ],
+        "asesor_de_ampliaciones": _public_facts(report.upgrade_advice, include_identity),
         "conclusion": (
             report.conclusion
             if include_identity or report.conclusion is None

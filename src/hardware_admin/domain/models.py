@@ -159,6 +159,10 @@ class DiagnosticReport:
     #: Procedimientos propuestos, ordenados por gravedad. Vacío cuando no hay
     #: anomalías ni síntoma: no se inventan recomendaciones sin motivo.
     recommendations: tuple[Recommendation, ...] = field(default_factory=tuple)
+    #: Fichas locales de ampliación generadas a partir de inventario y contexto
+    #: voluntario de la sesión. Se mantiene opcional para conservar la
+    #: compatibilidad de los reportes y motores anteriores.
+    upgrade_advice: dict[str, Any] = field(default_factory=dict)
 
     @property
     def has_problems(self) -> bool:

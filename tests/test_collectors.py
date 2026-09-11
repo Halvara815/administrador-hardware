@@ -1,8 +1,10 @@
 from unittest import TestCase
+from unittest.mock import patch
 
 from hardware_admin.collectors.core import (
     CpuCollector,
     MemoryCollector,
+    SystemCollector,
     build_default_collectors,
     format_bytes,
 )
@@ -67,6 +69,58 @@ class NumericSeriesTests(TestCase):
         self.assertGreater(memoria["total"], 0)
         self.assertLessEqual(memoria["usada"], memoria["total"])
         self.assertTrue(str(result.facts["Porcentaje de uso"]).endswith("%"))
+
+    @patch("psutil.virtual_memory")
+    @patch("psutil.swap_memory")
+    def test_memory_exposes_firmware_maximum_and_theoretical_margin(self, mock_swap, mock_vm) -> None:
+        """El máximo SMBIOS se muestra sin confundirlo con una compatibilidad de módulo."""
+        vm = type("Memory", (), {"total": 16 * 1024**3, "available": 8 * 1024**3, "used": 8 * 1024**3, "percent": 50.0})()
+        mock_vm.return_value = vm
+        mock_swap.return_value = type("Swap", (), {"used": 0})()
+
+        class MemoryRunner:
+            def run(self, query: PowerShellQuery) -> CommandResult:
+                if query is PowerShellQuery.PHYSICAL_MEMORY_MODULES:
+                    return CommandResult(
+                        query,
+                        '[{"DeviceLocator":"DIMM 0","Capacity":17179869184}]',
+                        0,
+                    )
+                if query is PowerShellQuery.PHYSICAL_MEMORY_ARRAY:
+                    return CommandResult(query, '[{"MaxCapacityEx":67108864,"MemoryDevices":2}]', 0)
+                return CommandResult(query, "[]", 0)
+
+        result = MemoryCollector(MemoryRunner()).collect()
+
+        self.assertEqual(result.facts["Máximo RAM reportado por firmware"], "64.0 GB")
+        self.assertEqual(result.facts["Margen teórico de ampliación RAM"], "48.0 GB")
+        self.assertEqual(result.facts["Ranuras RAM reportadas por firmware"], 2)
+
+    def test_system_slots_collector_handles_rows_and_empty(self) -> None:
+        """SystemCollector estructura las ranuras Win32_SystemSlot o degrada limpiamente."""
+        class SlotsRunner:
+            def __init__(self, output: str) -> None:
+                self.output = output
+
+            def run(self, query: PowerShellQuery) -> CommandResult:
+                if query is PowerShellQuery.SYSTEM_SLOTS:
+                    return CommandResult(query, self.output, 0)
+                return CommandResult(query, "[]", 0)
+
+        # Caso con filas de ranura
+        rows_json = '[{"SlotDesignation":"M.2 Slot 1","CurrentUsage":3,"Status":"OK","MaxDataWidth":4,"Description":"M.2 PCIe"}]'
+        res_with_slots = SystemCollector(SlotsRunner(rows_json)).collect()
+        slots_val = res_with_slots.facts["Ranuras del sistema (Win32_SystemSlot)"]
+        self.assertIsInstance(slots_val, list)
+        self.assertEqual(len(slots_val), 1)
+        self.assertEqual(slots_val[0]["Ranura"], "M.2 Slot 1")
+
+        # Caso vacío: degrada a mensaje honesto
+        res_empty = SystemCollector(SlotsRunner("[]")).collect()
+        self.assertEqual(
+            res_empty.facts["Ranuras del sistema (Win32_SystemSlot)"],
+            "No reportadas por el firmware o incompletas en este equipo",
+        )
 
     def test_chart_series_never_reach_the_details_panel(self) -> None:
         """Las claves de grafico no son texto: la ficha no debe mostrarlas.
