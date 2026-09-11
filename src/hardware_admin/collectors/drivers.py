@@ -59,6 +59,7 @@ class DriverCollector:
             "Consultados": len(rows),
             "No firmados": len(unsigned),
             "Actualizaciones disponibles": len(updates),
+            "Controladores desactualizados": updates,
             "Actualizaciones": updates,
         }
 
