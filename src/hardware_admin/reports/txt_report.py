@@ -11,6 +11,7 @@ from pathlib import Path
 from hardware_admin.domain.models import DiagnosticReport
 from hardware_admin.reports._logging import log_export
 from hardware_admin.reports.json_report import build_payload
+from hardware_admin.services.upgrade_advisor import format_upgrade_advice
 
 _ESTADOS = {
     "unknown": "Sin analizar",
@@ -18,6 +19,8 @@ _ESTADOS = {
     "warning": "Advertencia",
     "critical": "Problema",
     "error": "Error de consulta",
+    "not_supported": "No soportado",
+    "cancelled": "Cancelado",
 }
 
 
@@ -78,6 +81,10 @@ def render_text(report: DiagnosticReport, include_identity: bool = True) -> str:
                 else "     Sólo consulta: no altera el equipo."
             )
             lines.append("")
+
+    advisor = payload.get("asesor_de_ampliaciones")
+    if isinstance(advisor, dict) and advisor:
+        lines.extend([format_upgrade_advice(advisor), ""])
 
     if payload["errores_de_consulta"]:
         lines.extend(["CONSULTAS QUE NO SE COMPLETARON", "-" * 30])

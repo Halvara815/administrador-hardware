@@ -36,6 +36,15 @@ hardware_admin = ["py.typed"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+cache_dir = "scratch/pytest-cache-verify"
+# La captura por defecto de pytest ("fd") sustituye los descriptores 0/1/2 del
+# proceso. Tcl los necesita al crear un intérprete: con ellos redirigidos falla
+# al leer init.tcl y aborta con «Can't find a usable init.tcl ... couldn't read
+# file: No error», aunque el archivo exista y sea legible. El fallo es
+# intermitente y depende del orden de las pruebas, así que aparecía unas veces
+# sí y otras no. Capturar a nivel de sys deja intactos los descriptores.
+# Esto NO omite ninguna prueba: las de interfaz siguen ejecutándose todas.
+addopts = "--capture=sys"
 
 [tool.ruff]
 line-length = 100

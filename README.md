@@ -16,7 +16,7 @@ controladores están en investigación; todavía no están integradas.
 - Dispositivos USB y PCI/PCIe, controladores y monitor/GPU.
 - Detección de estados problemáticos y análisis por sección.
 - Matriz de resultados, conclusiones y consola de evidencia de solo lectura.
-- Muestra de actividad de E/S y exportación HTML.
+- Muestra de actividad de E/S y exportación HTML, JSON o TXT.
 
 Consultar el [plan de desarrollo](BUILD_PLAN.md) para el estado de cada fase.
 Las capturas y el paquete existente pueden corresponder a una revisión anterior
@@ -31,7 +31,8 @@ dist/AdministradorDeHardware/AdministradorDeHardware.exe
 ```
 
 Conservar las dependencias junto al ejecutable. Pulsar **ANALIZAR EQUIPO**,
-seleccionar un componente y utilizar la opción de reporte para exportar HTML.
+seleccionar un componente y utilizar la opción de exportación para guardar HTML,
+JSON o TXT.
 No hace falta instalar Python para usar la distribución empaquetada.
 
 ## Desarrollo
@@ -58,6 +59,10 @@ PowerShell. Las versiones están registradas en requirements.lock.
 - [Guía de uso](docs/USER_GUIDE.md): instalación, uso, política de datos y solución de problemas.
 - [Notas de versión](CHANGELOG.md): cambios y limitaciones conocidas.
 - [Pruebas reales](docs/evidence/PROTOCOLO_PRUEBAS_REALES.md): protocolo con hardware físico, pendiente de ejecutar.
+- [Revisión de estado](docs/architecture/10-project-review-2026-09-05.md): evidencia
+  actual, pendientes y trazabilidad de la revisión más reciente.
+- [Instrucciones de ejecución](docs/EXECUTION_INSTRUCTIONS.md): orden canónico y
+  gates para completar lo pendiente sin inventar fases.
 
 ## Datos y límites
 

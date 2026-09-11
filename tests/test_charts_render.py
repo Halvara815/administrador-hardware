@@ -189,3 +189,189 @@ class ActionSectionTests(TestCase):
 
         self.assertTrue(self.app.workspace.winfo_ismapped())
         self.assertFalse(self.app.action_view.winfo_ismapped())
+
+    def test_reset_diagnostic_clears_only_the_current_diagnostic_session(self) -> None:
+        from hardware_admin.domain.models import ComponentKind, ComponentResult, HealthStatus
+
+        result = ComponentResult(
+            ComponentKind.CPU,
+            "CPU",
+            {"Uso": "90%"},
+            summary="90% en uso",
+            status=HealthStatus.WARNING,
+        )
+        self.app.results_by_kind[ComponentKind.CPU] = result
+        self.app.report = self.app._merged_report()
+        self.app.matrix.update_result(result)
+        self.app.cards[ComponentKind.CPU].update_result("90%", HealthStatus.WARNING)
+        self.app.symptom_var.set("se reinicia")
+
+        self.app.reset_diagnostic()
+
+        self.assertEqual(self.app.results_by_kind, {})
+        self.assertIsNone(self.app.report)
+        self.assertEqual(self.app.symptom_var.get(), "")
+        self.assertEqual(self.app.global_status.cget("text"), "Sin analizar")
+        self.assertEqual(self.app.matrix.rows[ComponentKind.CPU].cells[1].cget("text"), "—")
+        self.assertEqual(self.app.cards[ComponentKind.CPU].value_label.cget("text"), "--")
+
+    def test_thermal_dashboard_is_presented_as_a_front_child_window(self) -> None:
+        self.app.open_thermal_dashboard()
+        self.app.update_idletasks()
+        self.app.update()
+
+        window = self.app.thermal_window
+        self.assertIsNotNone(window)
+        assert window is not None
+        self.assertEqual(str(window.wm_transient()), str(self.app))
+        self.assertTrue(window.winfo_viewable())
+
+
+@skipUnless(TK, "Requiere una sesión gráfica para crear ventanas Tk")
+class DeferredCallbackTests(TestCase):
+    """Regresion: un callback de `after` no debe ejecutarse tras destruir la ventana.
+
+    `EvidenceWindow` programa `state('zoomed')` a 10 ms y `focus` a 20 ms. Si la
+    ventana se cierra antes —lo que hace el smoke test al abrir y destruir cada
+    ventana hija— esos callbacks disparaban contra un widget inexistente y Tcl
+    emitia un error de "after" script. El codigo de salida seguia siendo 0, de
+    modo que el fallo quedaba tolerado sin que nadie lo viera.
+    """
+
+    def setUp(self) -> None:
+        import customtkinter as ctk
+
+        self.root = ctk.CTk()
+        self.root.geometry("400x300")
+        self.errores: list[str] = []
+        # Tk enruta las excepciones de callback aqui en lugar de propagarlas.
+        self.root.report_callback_exception = (  # type: ignore[method-assign]
+            lambda exc, val, tb: self.errores.append(f"{exc.__name__}: {val}")
+        )
+
+    def tearDown(self) -> None:
+        import tkinter
+
+        # La ventana puede haberse destruido ya dentro de la prueba.
+        try:
+            self.root.destroy()
+        except tkinter.TclError:
+            pass
+
+    def _pump(self, milliseconds: int) -> None:
+        """Deja correr el bucle de eventos para que venzan los `after` pendientes."""
+        import time
+
+        limite = time.monotonic() + milliseconds / 1000
+        while time.monotonic() < limite:
+            self.root.update_idletasks()
+            self.root.update()
+            time.sleep(0.005)
+
+    def test_closing_the_evidence_window_immediately_raises_no_callback_error(self) -> None:
+        import customtkinter as ctk
+
+        from hardware_admin.ui.icons import render
+        from hardware_admin.ui.main_window import EvidenceWindow
+
+        icono = ctk.CTkImage(render("expand", 16, "#FFFFFF"), size=(16, 16))
+        ventana = EvidenceWindow(self.root, "TITULO", "cuerpo", icono)
+        ventana.destroy()
+
+        # Los callbacks estaban programados a 10 y 20 ms: hay que superarlos.
+        self._pump(200)
+
+        self.assertEqual(self.errores, [], f"callbacks tras destruir: {self.errores}")
+
+    def test_destroying_status_card_cancels_pulse_and_raises_no_callback_error(self) -> None:
+        import customtkinter as ctk
+
+        from hardware_admin.ui.icons import render
+        from hardware_admin.ui.main_window import StatusCard
+
+        icono = ctk.CTkImage(render("cpu", 24, "#FFFFFF"), size=(24, 24))
+        card = StatusCard(self.root, "Procesador", icono, "#1E293B")
+        card.pack()
+        self.root.update_idletasks()
+        self.root.update()
+
+        pulse_id = card._pulse_after_id
+        self.assertIsNotNone(pulse_id, "StatusCard no inicializó _pulse_after_id")
+        active_after_ids = self.root.tk.call("after", "info")
+        self.assertIn(pulse_id, active_after_ids, "El callback de pulso no está registrado en after info")
+
+        # Al destruir la tarjeta, debe cancelarse el callback _pulse_icon explícitamente
+        card.destroy()
+        self.assertIsNone(card._pulse_after_id, "_pulse_after_id debe ser None tras destroy()")
+
+        remaining_after_ids = self.root.tk.call("after", "info")
+        self.assertNotIn(pulse_id, remaining_after_ids, "El ID de callback cancelado no debe seguir en after info")
+
+        self._pump(1200)
+        self.assertEqual(self.errores, [], f"callbacks tras destruir StatusCard: {self.errores}")
+
+
+@skipUnless(TK, "Requiere una sesiÃ³n grÃ¡fica para crear ventanas Tk")
+class EvidenceCardsRenderTests(TestCase):
+    def setUp(self) -> None:
+        import customtkinter as ctk
+
+        self.root = ctk.CTk()
+        self.root.geometry("700x400")
+
+    def tearDown(self) -> None:
+        self.root.destroy()
+
+    def test_a_long_evidence_group_starts_closed_and_toggles_its_detail(self) -> None:
+        """Las listas largas deben ahorrar espacio hasta que el usuario las abra."""
+        from hardware_admin.ui.main_window import CollapsibleEvidenceCard, EvidenceCard
+
+        card = CollapsibleEvidenceCard(
+            self.root,
+            EvidenceCard("Controladores · Audio (4)", "• Audio Endpoint", "#E879F9", True),
+        )
+        card.pack(fill="x")
+        self.root.update_idletasks()
+        self.root.update()
+
+        self.assertFalse(card.expanded)
+        self.assertFalse(card.detail.winfo_ismapped())
+        self.assertEqual(card.toggle_button.cget("text"), ">")
+
+        card.toggle()
+        self.root.update_idletasks()
+        self.assertTrue(card.expanded)
+        self.assertTrue(card.detail.winfo_ismapped())
+        self.assertEqual(card.toggle_button.cget("text"), "⌄")
+
+    def test_evidence_window_uses_independent_stacks_for_each_column(self) -> None:
+        """Abrir una tarjeta no puede estirar ni desplazar la columna vecina."""
+        import customtkinter as ctk
+
+        from hardware_admin.domain.models import ComponentKind, ComponentResult
+        from hardware_admin.ui.icons import render
+        from hardware_admin.ui.main_window import EvidenceWindow
+
+        result = ComponentResult(
+            ComponentKind.DRIVER,
+            "Controladores",
+            {
+                "Consultados": 2,
+                "Controladores": [
+                    {"Nombre": "Audio Endpoint", "Tipo": "AUDIOSWENDPOINT"},
+                    {"Nombre": "Disk drive", "Tipo": "DISKDRIVE"},
+                ],
+            },
+        )
+        icon = ctk.CTkImage(render("expand", 16, "#FFFFFF"), size=(16, 16))
+        window = EvidenceWindow(self.root, "TITULO", "cuerpo", icon, result)
+        self.root.update_idletasks()
+        self.root.update()
+
+        columns = window.organized.winfo_children()
+        self.assertEqual(len(columns), 2)
+        self.assertNotEqual(columns[0], columns[1])
+        self.assertGreater(len(columns[0].winfo_children()), 0)
+        self.assertGreater(len(columns[1].winfo_children()), 0)
+
+        window.destroy()

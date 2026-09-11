@@ -14,6 +14,14 @@ class HealthStatus(StrEnum):
     WARNING = "warning"
     CRITICAL = "critical"
     ERROR = "error"
+    NOT_SUPPORTED = "not_supported"
+    CANCELLED = "cancelled"
+
+
+class ConfidenceLevel(StrEnum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
 
 
 class ComponentKind(StrEnum):
@@ -31,12 +39,58 @@ class ComponentKind(StrEnum):
 
 
 @dataclass(frozen=True, slots=True)
+class Measurement:
+    """Medición cuantitativa técnica con unidad física y rangos esperados."""
+
+    name: str
+    value: float | int
+    unit: str
+    expected_range: tuple[float, float] | None = None
+    duration_seconds: float | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class EvidenceRecord:
     source: str
     query: str
     output: str
     collected_at: datetime
     succeeded: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class ThermalReading:
+    """Lectura de telemetría térmica tipada con trazabilidad completa."""
+
+    source_name: str
+    target_hardware: str
+    temperature_celsius: float | None
+    unit: str
+    collected_at: datetime
+    duration_seconds: float | None
+    confidence: ConfidenceLevel
+    status: HealthStatus
+    is_supported: bool
+    detail: str
+    is_throttling: bool | None = None
+    fan_percent: int | None = None
+    fan_rpm: int | None = None
+    power_watts: float | None = None
+    clock_mhz: float | None = None
+    measurements: tuple[Measurement, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class WindowsCriticalEvent:
+    """Registro tipado de un evento crítico del sistema Windows (Fase F4)."""
+
+    timestamp: str
+    event_id: int
+    level: str
+    provider: str
+    message: str
+    category: str
+    is_kernel_power_41: bool = False
 
 
 class ConnectivityStage(StrEnum):
@@ -64,6 +118,9 @@ class ComponentResult:
     status: HealthStatus = HealthStatus.UNKNOWN
     possible_problem: str | None = None
     evidence: tuple[EvidenceRecord, ...] = field(default_factory=tuple)
+    confidence: ConfidenceLevel = ConfidenceLevel.LOW
+    measurements: tuple[Measurement, ...] = field(default_factory=tuple)
+    is_supported: bool = True
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +159,10 @@ class DiagnosticReport:
     #: Procedimientos propuestos, ordenados por gravedad. Vacío cuando no hay
     #: anomalías ni síntoma: no se inventan recomendaciones sin motivo.
     recommendations: tuple[Recommendation, ...] = field(default_factory=tuple)
+    #: Fichas locales de ampliación generadas a partir de inventario y contexto
+    #: voluntario de la sesión. Se mantiene opcional para conservar la
+    #: compatibilidad de los reportes y motores anteriores.
+    upgrade_advice: dict[str, Any] = field(default_factory=dict)
 
     @property
     def has_problems(self) -> bool:

@@ -71,9 +71,8 @@ comercial y no forma parte de esta versión.
 | 11 | Conectividad | Pruebas escalonadas: adaptador, IP, puerta de enlace, acceso externo y DNS |
 | 12 | Monitorización | Gráficos de E/S en vivo con Iniciar, Detener y Limpiar |
 | 13 | Recomendaciones | Todos los procedimientos propuestos, por gravedad |
-| 14 | Generar reporte | Vista del reporte completo en pantalla |
-| 15 | Exportar diagnóstico | Guarda el reporte en disco |
-| 0 | Salir | Cierre ordenado: detiene el muestreo |
+| 14 | Exportar diagnóstico | Muestra la vista previa del reporte completo y, al pulsar «Exportar», lo guarda en disco |
+| 0 | Avanzado | Estado inmediato de batería y funciones avanzadas |
 
 ### Monitorización
 

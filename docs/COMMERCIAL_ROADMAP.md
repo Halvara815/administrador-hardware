@@ -53,7 +53,7 @@ suscripciones en línea, inventario centralizado, historial consultable o múlti
 Las siguientes capacidades existentes se consideran la línea base y deben conservarse:
 
 - Ventana gráfica sin consola externa.
-- Navegación por los 15 apartados del proyecto más Salir.
+- Navegación por los 14 apartados del proyecto más Avanzado.
 - Análisis completo o por sección sin bloquear la interfaz.
 - Recolección de sistema, CPU, RAM, discos, red, USB, PCI/PCIe, controladores,
   dispositivos con problemas, monitor/GPU y E/S.
@@ -90,7 +90,7 @@ servicios remotos ni dependencias antes de demostrar que son necesarias.
 
 ## Fase 0: congelar y proteger la versión actual
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (tag `v0.1.0-baseline` creado y verificado).
 
 Objetivo: convertir `v0.1.0` en una referencia recuperable antes de agregar funciones.
 
@@ -110,7 +110,7 @@ Estimación: 1–2 horas.
 
 ## Fase 1: contratos de diagnóstico profesional
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (contratos profesionales, ConfidenceLevel, Measurement, NOT_SUPPORTED y CANCELLED implementados).
 
 Objetivo: preparar contratos compatibles para mediciones más profundas.
 
@@ -137,7 +137,7 @@ Estimación: 1–2 horas.
 
 ## Fase 2: almacenamiento, batería y firmware
 
-Estado: **NO INICIADA**.
+Estado: **COMPLETADA** (2026-09-05: Almacenamiento profundo con SMART/Reliability, degradación de permisos, batería y energía con detección desktop sin batería, firmware BIOS/UEFI/TPM/Secure Boot, desglose de módulos físicos RAM y powercfg /batteryreport bajo demanda asíncrono con confirmación explícita. 199 passed, 8 skipped, 29 subtests passed, ruff check limpio, mypy sin errores en 35 archivos, build y smoke-test de PyInstaller validados).
 
 Objetivo: pasar de inventario básico a salud física consultable.
 
@@ -147,7 +147,15 @@ Capacidades:
 - Estado, temperatura, vida útil estimada y contadores críticos de SSD/HDD.
 - Capacidad, tipo de medio, bus, firmware y errores reportados.
 - Batería: capacidad de diseño, capacidad actual, desgaste y ciclos disponibles.
+- Estado del cargador y plan de energía; generar `powercfg /batteryreport` sólo
+  por acción explícita y con destino elegido por el usuario.
 - BIOS/UEFI, placa base, TPM y Secure Boot como información diagnóstica.
+- Inventario ampliado de Bluetooth, cámara, micrófono, audio, teclado/mouse y
+  pantallas: presencia, estado/código PnP y resolución/modo disponible cuando
+  Windows lo exponga. No asumir que todos los periféricos son consultables.
+- Inventario profundo de módulos RAM: fabricante, número de parte, ranura,
+  capacidad, generación y velocidad configurada/reportada, distinguiendo
+  información SMBIOS de un límite de ampliación validado.
 
 Seguridad:
 
@@ -158,6 +166,8 @@ Seguridad:
 Pruebas:
 
 - Fixtures SATA, NVMe, equipo sin SMART y equipo sin batería.
+- Batería/cargador no disponibles, periféricos desconectados y firmware que
+  omite campos SMBIOS; los campos ausentes deben ser `NOT_SUPPORTED`, no sanos.
 - Valores ausentes o informados con unidades diferentes.
 - Integración real sin asumir que todos los discos soportan las mismas propiedades.
 
@@ -169,7 +179,7 @@ Estimación: 2–4 horas.
 
 ## Fase 3: sensores y comportamiento térmico
 
-Estado: **NO INICIADA**.
+Estado: **NEEDS_USER_VERIFICATION** (2026-09-05: Telemetría térmica mediante arquitectura desacoplada `ThermalSensorProvider` con frontera de sesión determinista y deduplicación concurrente por consulta. Implementados `WmiThermalZoneProvider` [dK -> °C y degradación de permisos], `StorageThermalProvider` [reutiliza fiabilidad SMART F2], `NvidiaGpuThermalProvider` [vía binario oficial en rutas protegidas y banderas oficiales de throttling térmico] y `NullThermalProvider` de rollback. Reset de sesión y single-flight concurrente en `SafePowerShellRunner` sin datos obsoletos ni consultas duplicadas. La UI expone el botón y ventana hija «Temperaturas y sensores», con valor, origen, estado y límite de cada sensor. Empaquetado Windows corregido con CPython 3.12.10 oficial y Tcl/Tk 8.6.15 completo; release previo invalidado. AMD/Intel GPU, voltajes y ventiladores de placa no expuestos nativamente se declaran `NOT_SUPPORTED`. 242 passed, 29 subtests passed [total: 242 pruebas evaluadas; en headless: 233 passed, 9 skipped, 1 warning, 29 subtests passed], ruff limpio, mypy sin errores en 36 archivos. Pendiente validación física en hardware heterogéneo).
 
 Objetivo: medir temperatura, carga, frecuencia y posibles límites térmicos.
 
@@ -200,7 +210,7 @@ Estimación: 3–6 horas más validación en hardware diferente.
 
 ## Fase 4: red y eventos críticos de Windows
 
-Estado: **NO INICIADA**.
+Estado: **NEEDS_USER_VERIFICATION** (2026-09-06: Diagnóstico de red escalonado [adaptador -> IP/APIPA -> gateway -> DNS -> Internet], soporte skip_external sin degradar red local sana, latencia y pérdida de paquetes hacia gateway y destino externo, detección de ICMP bloqueado con DNS funcional como evidencia limitada, estadísticas de tráfico, descartes y velocidad por interfaz con psutil, intensidad de señal Wi-Fi con netsh [NOT_SUPPORTED si ausente]. Proveedor de eventos críticos de Windows `WindowsEventsProvider` con consulta `Get-WinEvent` segura [try/catch, -ErrorAction Stop, ventana fija estricta de 7 días con rechazo explícito por ValueError], manejo de errores de permisos como NOT_SUPPORTED y fallos como ERROR [nunca lista vacía ni NORMAL], captura de MalformedQueryOutput y salida JSON corrupta sin degradar SystemCollector. Categorización de eventos [WHEA, DISK_STORAGE, REINICIO_INESPERADO, BSOD, DRIVER, KERNEL_POWER], regla estricta de Kernel-Power 41 solo cuando event_id == 41 [ID distinto no se marca como reinicio inesperado]. Sanitización de privacidad [máximo 500 caracteres, depuración de rutas, usuarios, IPv4 e IPv6, MACs, números de serie y sanitización de mensajes de error Get-WinEvent]. Correlación de controladores exclusivamente por DeviceID/InstanceId normalizado contra PROBLEM_DEVICES [prohibida coincidencia por FriendlyName; antigüedad de fecha nunca recomienda actualización por sí sola]. Logging resiliente a PermissionError/OSError con degradación a NullHandler. Ventana gráfica hija `WindowsEventsWindow` en Sistema con descargo legal explícito y tarjetas de eventos. Doble smoke test obligatorio en `build.py` sobre EXE en dist y EXE extraído de ZIP. 271 passed, 29 subtests passed, ruff check limpio, mypy sin errores en 37 archivos, build y smoke test de EXE y ZIP validados. Empaquetado Tcl/Tk corregido el 2026-09-05: el spec aplanaba los destinos de los 926 recursos con `Path(dest).parent` y destruía los subdirectorios anidados que Tcl necesita; ahora se añaden las tuplas canónicas `(dest, src, typecode)` sin alterar el destino. Build limpio verificado con CPython 3.12.10 y Tcl/Tk 8.6.15: `tkinter.Tk()` PASS, 271 passed y 29 subtests, ruff limpio, mypy sin errores en 37 archivos, y doble `--smoke-test` con código 0 sobre el EXE de `dist` y sobre el EXE extraído del ZIP. SHA-256 EXE `aee39cac202590d908ec8b24ca7d6562d943b84421897b3d2ad767b039d817c2`; SHA-256 ZIP `a28f6818a1b5655823bf46fb9631e53f93d434ec6f237b462178d46b0bf20842`. Corregidos además el arranque de Tcl bajo la captura `fd` de pytest y la carrera de «after script» al destruir ventanas; 272 passed deterministas y smoke test con stderr vacío. Los hashes anteriores quedan invalidados. **Pendiente de verificación humana:** recorrido visual de la ventana principal, «Temperaturas y sensores» y «Eventos de Windows», y prueba en un equipo limpio).
 
 Objetivo: distinguir adaptador activo, red local funcional y acceso a Internet.
 
@@ -210,6 +220,11 @@ Capacidades:
 - Latencia, pérdida de paquetes y estadísticas de interfaz.
 - Intensidad de Wi-Fi cuando esté disponible.
 - Eventos recientes WHEA, errores de disco, fallos de controlador y reinicios inesperados.
+- Eventos de pantalla azul y códigos de problema PnP; conservar fecha y ventana
+  temporal, sin presentar Kernel-Power 41 como diagnóstico causal por sí solo.
+- Revisión de drivers por dispositivo: versión, fecha, proveedor, firma, código,
+  dispositivo deshabilitado/faltante y aplicabilidad OEM/Windows Update. La
+  antigüedad por fecha no basta para recomendar actualización.
 - Ventana temporal visible para evitar conclusiones basadas en eventos antiguos.
 
 Seguridad y privacidad:
@@ -226,7 +241,7 @@ Estimación: 2–4 horas.
 
 ## Fase 5: motor de diagnóstico multimuestreo
 
-Estado: **NO INICIADA**.
+Estado: **ESTRICTAMENTE NO INICIADA**.
 
 Objetivo: reducir falsos positivos y producir recomendaciones útiles.
 
@@ -271,6 +286,9 @@ Controles obligatorios:
 - Límites térmicos y de recursos; interrupción ante una señal peligrosa.
 - Espacio temporal limitado, ruta validada y limpieza garantizada.
 - No ejecutar pruebas destructivas, firmware, overclock ni reparación automática.
+- Diagnóstico de memoria de Windows y cualquier prueba que requiera reinicio sólo
+  con confirmación explícita, explicación de impacto y registro de que no se
+  ejecutó si el usuario cancela.
 
 Pruebas:
 

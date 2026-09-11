@@ -1,7 +1,12 @@
 from datetime import UTC, datetime
 from unittest import TestCase
 
-from hardware_admin.domain.models import ComponentKind
+from hardware_admin.domain.models import (
+    ComponentKind,
+    ComponentResult,
+    DiagnosticReport,
+    HealthStatus,
+)
 from hardware_admin.services.monitoring_service import Sample
 from hardware_admin.ui import theme
 from hardware_admin.ui.main_window import (
@@ -12,25 +17,28 @@ from hardware_admin.ui.main_window import (
     SECTION_NAMES,
     adapter_bars,
     core_bars,
+    evidence_cards,
     fit_window,
+    format_normalized_facts,
     series_for,
+    thermal_dashboard_rows,
+    upgrade_advisor_cards,
     volume_bars,
 )
 
 
 class UiContractTests(TestCase):
-    def test_navigation_contains_the_fifteen_options_and_advanced(self) -> None:
-        """El enunciado pide 15 apartados mas Avanzado, en ese orden."""
+    def test_navigation_contains_the_fourteen_options_and_advanced(self) -> None:
+        """El menu ofrece 14 apartados mas Avanzado, en ese orden."""
         labels = [entry.label for entry in NAV_ITEMS]
 
-        self.assertEqual(len(NAV_ITEMS), 16)
+        self.assertEqual(len(NAV_ITEMS), 15)
         self.assertEqual(labels[0], "1. Diagnóstico general")
         self.assertEqual(labels[10], "11. Conectividad")
         self.assertEqual(labels[11], "12. Monitorización")
         self.assertEqual(labels[12], "13. Recomendaciones")
-        self.assertEqual(labels[13], "14. Generar reporte")
-        self.assertEqual(labels[14], "15. Exportar diagnóstico")
-        self.assertEqual(labels[15], "0. Avanzado")
+        self.assertEqual(labels[13], "14. Exportar diagnóstico")
+        self.assertEqual(labels[14], "0. Avanzado")
 
     def test_every_component_still_has_its_own_section(self) -> None:
         """Ningun apartado de componente se pierde al reordenar el menu."""
@@ -40,12 +48,12 @@ class UiContractTests(TestCase):
         self.assertEqual(len(components), len(set(components)))
 
     def test_entries_without_component_declare_an_action(self) -> None:
-        """Conectividad, Recomendaciones, Reporte, Exportar y Avanzado no son componentes."""
+        """Conectividad, Recomendaciones, Exportar y Avanzado no son componentes."""
         actions = [entry.action for entry in NAV_ITEMS if entry.component is None]
 
         self.assertEqual(
             actions,
-            ["connectivity", "recommendations", "report", "export", "advanced"],
+            ["connectivity", "recommendations", "export", "advanced"],
         )
 
     def test_no_entry_declares_both_a_component_and_an_action(self) -> None:
@@ -135,6 +143,183 @@ class SectionChartContractTests(TestCase):
         self.assertEqual(core_bars({}), [])
         self.assertEqual(volume_bars({}), [])
         self.assertEqual(adapter_bars({}), [])
+
+
+class EvidenceFormattingContractTests(TestCase):
+    def test_drivers_are_grouped_by_semantic_category_and_sorted(self) -> None:
+        text = format_normalized_facts(
+            ComponentKind.DRIVER,
+            {
+                "Controladores": [
+                    {
+                        "Nombre": "WAN Miniport (IP)",
+                        "Tipo": "NET",
+                        "DriverVersion": "10.0",
+                        "IsSigned": True,
+                    },
+                    {
+                        "Nombre": "ACPI Fan",
+                        "Tipo": "SYSTEM",
+                        "DriverVersion": "2.0",
+                        "IsSigned": True,
+                    },
+                    {
+                        "Nombre": "Ethernet",
+                        "Tipo": "NET",
+                        "DriverVersion": "3.0",
+                        "IsSigned": False,
+                    },
+                ],
+                "Consultados": 3,
+                "No firmados": 1,
+            },
+        )
+
+        self.assertLess(text.index("Consultados:"), text.index("Controladores:"))
+        self.assertIn("Red y conectividad (2)", text)
+        self.assertIn("Sistema y firmware (1)", text)
+        self.assertLess(text.index("• Ethernet"), text.index("• WAN Miniport (IP)"))
+        self.assertIn("Versión: 3.0", text)
+        self.assertIn("Firma: No firmado", text)
+        self.assertNotIn(" | ", text)
+
+    def test_structured_lists_are_grouped_for_other_components_too(self) -> None:
+        text = format_normalized_facts(
+            ComponentKind.NETWORK,
+            {
+                "Adaptadores": [
+                    {
+                        "Adaptador": "Wi-Fi",
+                        "Tipo": "Inalámbrico",
+                        "Estado": "Conectado",
+                    },
+                    {
+                        "Adaptador": "Ethernet",
+                        "Tipo": "Cableado",
+                        "Estado": "Desconectado",
+                    },
+                ],
+                "_adaptadores": [{"nombre": "interno"}],
+            },
+        )
+
+        self.assertIn("Cableado (1)", text)
+        self.assertIn("Inalámbrico (1)", text)
+        self.assertIn("• Ethernet", text)
+        self.assertNotIn("_adaptadores", text)
+
+    def test_evidence_cards_use_distinct_category_colours_and_keep_each_driver(self) -> None:
+        cards = evidence_cards(
+            ComponentKind.DRIVER,
+            {
+                "Consultados": 2,
+                "Controladores": [
+                    {"Nombre": "Audio Endpoint", "Tipo": "AUDIOSWENDPOINT"},
+                    {"Nombre": "Disk drive", "Tipo": "DISKDRIVE"},
+                ],
+            },
+        )
+
+        by_title = {card.title: card for card in cards}
+        audio = by_title["Controladores · Audio (1)"]
+        storage = by_title["Controladores · Almacenamiento (1)"]
+        self.assertIn("• Audio Endpoint", audio.body)
+        self.assertIn("• Disk drive", storage.body)
+        self.assertNotEqual(audio.color, storage.color)
+        self.assertTrue(audio.collapsible)
+        self.assertFalse(by_title["Resumen"].collapsible)
+
+    def test_upgrade_advisor_uses_ordered_independent_collapsible_cards(self) -> None:
+        cards = upgrade_advisor_cards(
+            {
+                "origen": "Reglas locales",
+                "limitaciones": ["Sin tiendas"],
+                "ram": {"estado": "PENDIENTE", "conclusion": "Falta manual"},
+                "ssd": {"estado": "PENDIENTE", "conclusion": "Falta ranura"},
+                "gpu": {"estado": "PENDIENTE", "conclusion": "Falta fuente"},
+                "priorización": {
+                    "estado": "PENDIENTE",
+                    "conclusion": "Sin presupuesto",
+                    "acciones": [
+                        {
+                            "orden": "1",
+                            "área": "Sin compra",
+                            "acción": "Confirmar evidencia",
+                            "fundamento": "Sin datos completos",
+                        }
+                    ],
+                },
+            }
+        )
+
+        self.assertEqual(cards[0].title, "RESUMEN DEL ASESOR")
+        self.assertFalse(cards[0].collapsible)
+        titles = [card.title for card in cards]
+        self.assertEqual(titles[1:], [
+            "ASESOR · RAM · PENDIENTE",
+            "ASESOR · SSD · PENDIENTE",
+            "ASESOR · GPU · FUENTE Y ESPACIO · PENDIENTE",
+            "ASESOR · QUÉ ACTUALIZAR PRIMERO · PENDIENTE",
+        ])
+        self.assertTrue(all(card.collapsible for card in cards[1:]))
+
+
+class ThermalDashboardContractTests(TestCase):
+    def test_thermal_rows_make_gpu_and_storage_values_visible(self) -> None:
+        rows = thermal_dashboard_rows(
+            {
+                ComponentKind.MONITOR_GPU: ComponentResult(
+                    ComponentKind.MONITOR_GPU,
+                    "Monitor y GPU",
+                    {
+                        "Telemetría térmica GPU": [
+                            {
+                                "Dispositivo": "GPU 0: NVIDIA",
+                                "Temperatura": "62.0 °C",
+                                "Estado": "normal",
+                                "Detalle": "Sin throttling térmico",
+                            }
+                        ]
+                    },
+                    status=HealthStatus.NORMAL,
+                ),
+                ComponentKind.DISK: ComponentResult(
+                    ComponentKind.DISK,
+                    "Almacenamiento",
+                    {
+                        "Telemetría térmica de almacenamiento": [
+                            {
+                                "Unidad": "NVMe",
+                                "Temperatura": "44.0 °C",
+                                "Estado": "normal",
+                                "Detalle": "Sensor SMART",
+                            }
+                        ]
+                    },
+                    status=HealthStatus.NORMAL,
+                ),
+            }
+        )
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["temperature"], "62.0 °C")
+        self.assertEqual(rows[0]["area"], "GPU")
+        self.assertEqual(rows[1]["source"], "NVMe")
+
+    def test_thermal_rows_preserve_a_missing_sensor_explanation(self) -> None:
+        rows = thermal_dashboard_rows(
+            {
+                ComponentKind.CPU: ComponentResult(
+                    ComponentKind.CPU,
+                    "CPU",
+                    {"Telemetría térmica CPU": "No disponible de forma nativa"},
+                )
+            }
+        )
+
+        self.assertEqual(rows[0]["temperature"], "—")
+        self.assertEqual(rows[0]["status"], "No soportado")
+        self.assertIn("No disponible", rows[0]["detail"])
         self.assertEqual(core_bars({"_nucleos": "no disponible"}), [])
 
 
@@ -185,3 +370,65 @@ class WindowFitTests(TestCase):
         self.assertGreater(minima[0], 0)
         self.assertGreater(minima[1], 0)
         self.assertLessEqual(minima[0], geometria[0])
+
+
+class ExportPreviewContractTests(TestCase):
+    """«14. Exportar diagnóstico» muestra el reporte antes de guardar nada."""
+
+    def setUp(self) -> None:
+        from hardware_admin.app_factory import build_scan_service
+        from hardware_admin.ui.main_window import HardwareAdminApp
+
+        self.app = HardwareAdminApp(build_scan_service())
+        self.app.update_idletasks()
+        self.app.update()
+
+    def tearDown(self) -> None:
+        self.app.monitoring_service.stop()
+        self.app.destroy()
+
+    def _abrir_exportar(self) -> str:
+        self.app.run_action("export")
+        self.app.update_idletasks()
+        self.app.update()
+        return self.app.action_text.get("1.0", "end-1c")
+
+    def test_without_a_diagnostic_there_is_nothing_to_export(self) -> None:
+        """Sin diagnóstico no se ofrece el botón: no habría nada que guardar."""
+        cuerpo = self._abrir_exportar()
+
+        self.assertEqual(self.app.section_title.cget("text"), "EXPORTAR DIAGNÓSTICO")
+        self.assertFalse(self.app.export_controls.winfo_ismapped())
+        self.assertIn("Todavía no hay diagnóstico", cuerpo)
+
+    def test_with_a_diagnostic_the_preview_precedes_the_export_button(self) -> None:
+        """El reporte completo se lee en pantalla y sólo entonces aparece «Exportar»."""
+        self.app.report = DiagnosticReport(
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            results=(),
+            conclusion="Sin anomalías detectadas.",
+        )
+
+        cuerpo = self._abrir_exportar()
+
+        self.assertTrue(self.app.export_controls.winfo_ismapped())
+        self.assertIn("REPORTE DE DIAGNÓSTICO", cuerpo)
+        self.assertIn("Sin anomalías detectadas.", cuerpo)
+        self.assertIn("Pulse «Exportar»", cuerpo)
+
+    def test_leaving_the_section_hides_the_export_button(self) -> None:
+        """El botón pertenece a la vista previa, no a la ventana."""
+        self.app.report = DiagnosticReport(
+            started_at=datetime.now(UTC),
+            completed_at=datetime.now(UTC),
+            results=(),
+            conclusion="Sin anomalías detectadas.",
+        )
+        self._abrir_exportar()
+
+        self.app.run_action("recommendations")
+        self.app.update_idletasks()
+        self.app.update()
+
+        self.assertFalse(self.app.export_controls.winfo_ismapped())

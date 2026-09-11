@@ -18,7 +18,7 @@ Fecha de verificación: 2026-09-04
 | 9 | Dispositivos con problemas | `PnpCollector(PROBLEM_DEVICES)` | Consulta de dispositivos presentes con filtrado de estado |
 | 10 | Monitor y GPU | `MonitorGpuCollector` | Una GPU y un monitor detectados en la prueba real |
 | 11 | Monitorizar E/S | `IoCollector` | Tasas de lectura, escritura, envío y recepción calculadas en un intervalo real |
-| 12 | Generar reporte | `export_html` + selector de archivo | `reports/diagnostico-final-verificado.html` generado por el `.exe` |
+| 12 | Generar reporte | Vista previa en «14. Exportar diagnóstico» + `export_html` y selector de archivo | `reports/diagnostico-final-verificado.html` generado por el `.exe` |
 | — | Matriz diagnóstica | `HardwareAdminApp.matrix` | Captura `docs/ui-live.png` |
 | — | Evidencia tipo terminal | Consola visual de sólo lectura | Captura y smoke test de UI |
 | — | Causa probable justificada | `RuleBasedDiagnosticEngine` | Prueba del caso final CPU/RAM/USB/GPU |

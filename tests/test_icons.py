@@ -32,3 +32,8 @@ class IconTests(TestCase):
     def test_an_unknown_icon_is_reported_instead_of_drawn_blank(self) -> None:
         with self.assertRaises(KeyError):
             icons.render("no-existe", 16, "#FFFFFF")
+
+    def test_painters_mapping_contract(self) -> None:
+        self.assertIs(icons._PAINTERS["pci"], icons._paint_pci)
+        self.assertIs(icons._PAINTERS["card"], icons._paint_note)
+        self.assertIsNot(icons._PAINTERS["pci"], icons._PAINTERS["card"])

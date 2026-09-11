@@ -54,7 +54,7 @@ Resultado   : superada / fallida / NO EJECUTADA
 | PR-13 | Ejecución **sin** privilegios de administrador | Las secciones afectadas informan error de consulta, no componente sano |
 | PR-14 | Dispositivo con código de error en el Administrador de dispositivos | Aparece en «Dispositivos con problemas» con su código |
 | PR-15 | Exportar en HTML, JSON y TXT | Los tres se abren correctamente y coinciden en conclusión y cobertura |
-| PR-16 | Exportar copia anónima | Equipo y usuario aparecen como `(omitido)`; el resto es idéntico |
+| PR-16 | Exportar copia anónima | Equipo y usuario aparecen como `(omitido)`; se redactan IP, MAC, seriales y rutas personales en contexto, nombre del resultado, resumen, problemas, nombre de error de consulta, errores de consulta, recomendaciones, conclusión y limitaciones; la salida de evidencia cruda se reemplaza con `(omitido)` conservando fuente, consulta y fecha; las máscaras de red matemáticamente válidas se conservan; las versiones permitidas se conservan únicamente si no representan una IPv4 válida; el fallo de consulta de actualizaciones de controladores se refleja como consulta no completada (`errores_de_consulta`) y estado de error |
 | PR-17 | Síntoma con caracteres de shell (`lento & dir`) | Se conserva como texto en el reporte y no se ejecuta nada |
 | PR-18 | Guardar en carpeta sin permiso de escritura | Mensaje de error claro; la aplicación sigue funcionando |
 

@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import threading
+from concurrent.futures import Future
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -25,6 +27,15 @@ class PowerShellQuery(StrEnum):
     USB_STORAGE = "usb_storage"
     NETWORK_ADAPTERS = "network_adapters"
     NETWORK_CONFIGURATION = "network_configuration"
+    STORAGE_RELIABILITY = "storage_reliability"
+    BATTERY_INFO = "battery_info"
+    FIRMWARE_INFO = "firmware_info"
+    PHYSICAL_MEMORY_MODULES = "physical_memory_modules"
+    PHYSICAL_MEMORY_ARRAY = "physical_memory_array"
+    PERIPHERALS_EXTENDED = "peripherals_extended"
+    THERMAL_ZONE = "thermal_zone"
+    CRITICAL_EVENTS = "critical_events"
+    SYSTEM_SLOTS = "system_slots"
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +166,114 @@ _QUERY_SCRIPTS: dict[PowerShellQuery, str] = {
             }
         })
     """,
+    PowerShellQuery.STORAGE_RELIABILITY: """
+        $data = @(Get-PhysicalDisk -ErrorAction SilentlyContinue | ForEach-Object {
+            $disk = $_
+            $rel = $null
+            $err = $null
+            try {
+                $rel = Get-StorageReliabilityCounter -PhysicalDisk $disk -ErrorAction Stop
+            } catch {
+                $err = $_.Exception.Message
+            }
+            [PSCustomObject]@{
+                DeviceId = $disk.DeviceId;
+                FriendlyName = $disk.FriendlyName;
+                MediaType = $disk.MediaType;
+                BusType = $disk.BusType;
+                OperationalStatus = $disk.OperationalStatus;
+                HealthStatus = $disk.HealthStatus;
+                Temperature = if ($rel) { $rel.Temperature } else { $null };
+                Wear = if ($rel) { $rel.Wear } else { $null };
+                ReadErrorsTotal = if ($rel) { $rel.ReadErrorsTotal } else { $null };
+                WriteErrorsTotal = if ($rel) { $rel.WriteErrorsTotal } else { $null };
+                PowerOnHours = if ($rel) { $rel.PowerOnHours } else { $null };
+                ReliabilityError = $err
+            }
+        })
+    """,
+    PowerShellQuery.BATTERY_INFO: """
+        $batt = @(Get-CimInstance Win32_Battery -ErrorAction SilentlyContinue | Select-Object `
+            Name,DeviceID,EstimatedChargeRemaining,BatteryStatus,DesignCapacity,FullChargeCapacity,EstimatedRunTime,CycleCount)
+        $plan = Get-CimInstance -Namespace root\\cimv2\\power -ClassName Win32_PowerPlan -Filter "IsActive = True" -ErrorAction SilentlyContinue
+        $data = @([PSCustomObject]@{
+            Baterias = $batt;
+            TieneBateria = ($batt.Count -gt 0);
+            PlanEnergia = if ($plan) { $plan.ElementName } else { "Equilibrado" }
+        })
+    """,
+    PowerShellQuery.FIRMWARE_INFO: """
+        $bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue
+        $board = Get-CimInstance Win32_BaseBoard -ErrorAction SilentlyContinue
+        $tpm = Get-Tpm -ErrorAction SilentlyContinue
+        $sb = $null
+        try {
+            $sb = Confirm-SecureBootUEFI -ErrorAction SilentlyContinue
+        } catch {
+            $sb = $null
+        }
+        $data = @([PSCustomObject]@{
+            BiosVendor = if ($bios) { $bios.Manufacturer } else { "No disponible" };
+            BiosVersion = if ($bios) { $bios.SMBIOSBIOSVersion } else { "No disponible" };
+            BiosDate = if ($bios) { $bios.ReleaseDate } else { "No disponible" };
+            BoardManufacturer = if ($board) { $board.Manufacturer } else { "No disponible" };
+            BoardProduct = if ($board) { $board.Product } else { "No disponible" };
+            BoardVersion = if ($board) { $board.Version } else { "No disponible" };
+            TpmPresent = if ($tpm) { [bool]$tpm.TpmPresent } else { $false };
+            TpmReady = if ($tpm) { [bool]$tpm.TpmReady } else { $false };
+            TpmEnabled = if ($tpm) { [bool]$tpm.TpmEnabled } else { $false };
+            SecureBoot = if ($sb -ne $null) { [bool]$sb } else { "No disponible" }
+        })
+    """,
+    PowerShellQuery.PHYSICAL_MEMORY_MODULES: """
+        $data = @(Get-CimInstance Win32_PhysicalMemory -ErrorAction SilentlyContinue | Select-Object `
+            BankLabel,DeviceLocator,Capacity,Speed,ConfiguredClockSpeed,Manufacturer,PartNumber,FormFactor,MemoryType,SMBIOSMemoryType)
+    """,
+    PowerShellQuery.PHYSICAL_MEMORY_ARRAY: """
+        $data = @(Get-CimInstance Win32_PhysicalMemoryArray -ErrorAction SilentlyContinue | Select-Object `
+            MaxCapacityEx,MemoryDevices,Use,Location)
+    """,
+    PowerShellQuery.SYSTEM_SLOTS: """
+        $data = @(Get-CimInstance Win32_SystemSlot -ErrorAction SilentlyContinue | Select-Object `
+            SlotDesignation,CurrentUsage,Status,MaxDataWidth,Description)
+    """,
+    PowerShellQuery.PERIPHERALS_EXTENDED: """
+        $classes = @('Bluetooth', 'Media', 'Camera', 'Image', 'Keyboard', 'Mouse')
+        $data = @(Get-PnpDevice -PresentOnly -ErrorAction SilentlyContinue |
+            Where-Object { $classes -contains $_.Class } |
+            Select-Object -First 100 Status,Class,FriendlyName,InstanceId,Problem)
+    """,
+    PowerShellQuery.THERMAL_ZONE: """
+        $data = @(Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature -ErrorAction SilentlyContinue |
+            Select-Object InstanceName, CurrentTemperature, CriticalTripPoint, ThermalStamp)
+    """,
+    PowerShellQuery.CRITICAL_EVENTS: """
+        try {
+            $startTime = (Get-Date).AddDays(-7)
+            $filter = @{
+                LogName = 'System'
+                StartTime = $startTime
+                Level = @(1, 2)
+            }
+            $rawEvents = Get-WinEvent -FilterHashtable $filter -MaxEvents 300 -ErrorAction Stop
+            $events = $rawEvents | Where-Object {
+                $_.ProviderName -match 'WHEA|disk|Ntfs|storahci|storport|Kernel-Power|BugCheck|volmgr|EventLog'
+            } | Select-Object -First 50 @{Name='Timestamp';Expression={$_.TimeCreated.ToString('o')}},
+                @{Name='Id';Expression={$_.Id}},
+                @{Name='Nivel';Expression={$_.LevelDisplayName}},
+                @{Name='Proveedor';Expression={$_.ProviderName}},
+                @{Name='Mensaje';Expression={($_.Message -split "`r?`n")[0].Trim()}}
+            $data = @($events)
+        } catch {
+            $msg = $_.Exception.Message
+            if ($msg -match 'No events were found|No se encontraron eventos') {
+                $data = @()
+            } else {
+                Write-Error "ERROR_GET_WINEVENT: $msg"
+                exit 1
+            }
+        }
+    """,
 }
 
 
@@ -185,8 +304,20 @@ class SafePowerShellRunner:
 
     def __init__(self, timeout_seconds: float = 15.0) -> None:
         self.timeout_seconds = timeout_seconds
+        self._cache: dict[PowerShellQuery, CommandResult] = {}
+        self._inflight: dict[PowerShellQuery, Future[CommandResult]] = {}
+        self._lock = threading.Lock()
 
-    def run(self, query: PowerShellQuery) -> CommandResult:
+    def clear_cache(self) -> None:
+        """Limpia la caché de resultados de consultas."""
+        with self._lock:
+            self._cache.clear()
+
+    def reset_session(self) -> None:
+        """Limpia la caché de consultas para una nueva sesión de escaneo."""
+        self.clear_cache()
+
+    def run(self, query: PowerShellQuery, use_cache: bool = True) -> CommandResult:
         # Comprobación explícita antes de tocar el intérprete: el catálogo es la
         # única fuente de comandos, y un fallo de búsqueda no debe parecer un
         # accidente del diccionario.
@@ -195,6 +326,39 @@ class SafePowerShellRunner:
             raise UnknownQuery(
                 f"La consulta {query!r} no pertenece al catálogo cerrado y no se ejecuta."
             )
+
+        if not use_cache:
+            return self._execute_query(query, script)
+
+        with self._lock:
+            if query in self._cache:
+                return self._cache[query]
+            if query in self._inflight:
+                future = self._inflight[query]
+                is_leader = False
+            else:
+                future = Future()
+                self._inflight[query] = future
+                is_leader = True
+
+        if not is_leader:
+            return future.result()
+
+        try:
+            res = self._execute_query(query, script)
+        except BaseException as exc:
+            with self._lock:
+                self._inflight.pop(query, None)
+                future.set_exception(exc)
+            raise
+        else:
+            with self._lock:
+                self._cache[query] = res
+                self._inflight.pop(query, None)
+                future.set_result(res)
+            return res
+
+    def _execute_query(self, query: PowerShellQuery, script: str) -> CommandResult:
         complete_script = (
             "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new();"
             "$ErrorActionPreference='Stop';"

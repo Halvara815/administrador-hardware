@@ -4,7 +4,7 @@ name: CI
 # así que ejecutar las puertas en Linux no probaría lo que se distribuye.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
   workflow_dispatch:
 

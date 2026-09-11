@@ -6,6 +6,7 @@ import ipaddress
 import re
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 
 #: Patrón seguro para nombres de host o dominios sin caracteres de inyección.
 _SAFE_HOST_REGEX = re.compile(r"^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$")
@@ -145,3 +146,146 @@ class SafeCommandRunner:
         """Ejecuta arp.exe -a para consultar la tabla de resolución local conocida."""
         return self._execute(["arp.exe", "-a"], timeout=timeout)
 
+    def battery_report(self, target_path: str, timeout: float = 15.0) -> NativeCommandResult:
+        """Ejecuta powercfg.exe /batteryreport /output hacia una ruta validada."""
+        if not target_path or any(ch in _DISALLOWED_CHARS for ch in target_path):
+            return NativeCommandResult(
+                command=("powercfg.exe", "/batteryreport", "/output", target_path),
+                output="",
+                exit_code=-1,
+                error=f"Ruta de reporte de batería inválida o no segura: {target_path!r}",
+            )
+        return self._execute(
+            ["powercfg.exe", "/batteryreport", "/output", str(target_path).strip()],
+            timeout=timeout,
+        )
+
+    def nvidia_smi_query(self, binary_path: str, timeout: float = 5.0) -> NativeCommandResult:
+        """Ejecuta consulta cerrada a un binario nvidia-smi verificado en ruta de confianza."""
+        if not is_trusted_nvidia_smi_path(binary_path):
+            return NativeCommandResult(
+                command=(str(binary_path),),
+                output="",
+                exit_code=-1,
+                error=f"Ruta de nvidia-smi no confiable o no permitida: {binary_path!r}",
+            )
+        fixed_args = [
+            binary_path,
+            "--query-gpu=index,name,temperature.gpu,utilization.gpu,fan.speed,power.draw,clocks.current.graphics,clocks_throttle_reasons.hw_thermal_slowdown,clocks_throttle_reasons.sw_thermal_slowdown",
+            "--format=csv,noheader,nounits",
+        ]
+        return self._execute(fixed_args, timeout=timeout)
+
+    def wlan_show_interfaces(self, timeout: float = 5.0) -> NativeCommandResult:
+        """Ejecuta netsh.exe wlan show interfaces para consultar el estado de Wi-Fi."""
+        return self._execute(["netsh.exe", "wlan", "show", "interfaces"], timeout=timeout)
+
+
+_TRUSTED_NVIDIA_SMI_CANDIDATES: tuple[Path, ...] = (
+    Path(r"C:\Windows\System32\nvidia-smi.exe"),
+    Path(r"C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe"),
+)
+
+
+def is_trusted_nvidia_smi_path(binary_path: str | Path) -> bool:
+    """Valida estrictamente que una ruta apunte a una ubicación confiable de nvidia-smi."""
+    if not binary_path:
+        return False
+    try:
+        resolved = Path(binary_path).resolve()
+        trusted_set = {str(c.resolve()).lower() for c in _TRUSTED_NVIDIA_SMI_CANDIDATES}
+        return str(resolved).lower() in trusted_set
+    except (OSError, ValueError):
+        return False
+
+
+def find_trusted_nvidia_smi() -> str | None:
+    """Busca el ejecutable nvidia-smi únicamente en rutas del sistema confiables."""
+    for candidate in _TRUSTED_NVIDIA_SMI_CANDIDATES:
+        try:
+            if candidate.is_file():
+                return str(candidate)
+        except OSError:
+            continue
+    return None
+
+
+def generate_battery_report(
+    target_path: Path,
+    runner: SafeCommandRunner | None = None,
+) -> NativeCommandResult:
+    """Genera un reporte de batería mediante powercfg sólo por acción explícita."""
+    cmd_runner = runner or SafeCommandRunner()
+    resolved = str(target_path.resolve())
+    return cmd_runner.battery_report(resolved)
+
+
+def parse_ping_latency_and_loss(output: str) -> tuple[float | None, float | None]:
+    """Extrae latencia media (ms) y porcentaje de pérdida de paquetes (%) del output de ping.exe."""
+    if not output:
+        return None, None
+
+    loss_percent: float | None = None
+    loss_match = re.search(r"\((\d+)%\s*(?:loss|perdidos|pérdida)\)", output, re.IGNORECASE)
+    if not loss_match:
+        loss_match = re.search(r"(\d+)%\s*(?:de\s+pérdida|loss|perdidos)", output, re.IGNORECASE)
+    if loss_match:
+        try:
+            loss_percent = float(loss_match.group(1))
+        except (ValueError, TypeError):
+            pass
+
+    latency_ms: float | None = None
+    avg_match = re.search(
+        r"(?:Average|Media|Promedio)\s*=\s*(\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE
+    )
+    if avg_match:
+        try:
+            latency_ms = float(avg_match.group(1))
+        except (ValueError, TypeError):
+            pass
+    elif "tiempo=" in output.lower() or "time=" in output.lower():
+        single_match = re.search(
+            r"(?:tiempo|time)[=<](\d+(?:\.\d+)?)\s*ms", output, re.IGNORECASE
+        )
+        if single_match:
+            try:
+                latency_ms = float(single_match.group(1))
+            except (ValueError, TypeError):
+                pass
+
+    return latency_ms, loss_percent
+
+
+def parse_wlan_signal(output: str, exit_code: int = 0) -> tuple[bool, int | None, str]:
+    """Analiza la salida de netsh wlan show interfaces.
+
+    Devuelve: (soportado, porcentaje_señal, detalle).
+    Si el servicio no corre o no hay tarjeta Wi-Fi, devuelve (False, None, 'NOT_SUPPORTED: ...').
+    """
+    if exit_code != 0 or not output:
+        return False, None, "NOT_SUPPORTED: Servicio WLAN inactivo o sin interfaz Wi-Fi disponible"
+
+    lower = output.lower()
+    if (
+        "no se está ejecutando" in lower
+        or "not running" in lower
+        or "no hay ninguna interfaz" in lower
+        or "there is no wireless interface" in lower
+        or "sin interfaz" in lower
+    ):
+        return False, None, "NOT_SUPPORTED: Sin interfaz inalámbrica Wi-Fi o servicio wlansvc inactivo"
+
+    match = re.search(r"(?:Señal|Signal)\s*:\s*(\d+)%", output, re.IGNORECASE)
+    if match:
+        try:
+            val = int(match.group(1))
+            val = max(0, min(100, val))
+            return True, val, f"Señal Wi-Fi: {val}%"
+        except (ValueError, TypeError):
+            pass
+
+    if "desconectado" in lower or "disconnected" in lower:
+        return True, None, "Interfaz Wi-Fi presente pero desconectada"
+
+    return False, None, "NOT_SUPPORTED: No se detectó nivel de señal Wi-Fi"
